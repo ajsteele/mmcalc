@@ -3,14 +3,17 @@ from numpy.linalg import *
 from math import pi
 import random
 
-#epsilon is the tiny error on floating-point calculations
-epsilon = finfo(float).eps
-
-gamma_mu = 135.5*1e6 #Hz/T   muon gyromagnetic ratio
+# === CONSTANTS === #
+# physical
+gamma_mu = 135.538817*1e6 # Hz/T   muon gyromagnetic ratio   http://www.ebyte.it/library/educards/constants/ConstantsOfPhysicsAndMath.html
 mu_B = 9.2740091e-24 # J/T    Bohr magneton   http://physics.nist.gov/cgi-bin/cuu/Value?mub
+# units
+nano = 1.0e-9 # nm in m
+angstrom = 1.0e-10 #angstrom in m
+# computational
+epsilon = finfo(float).eps #epsilon is the tiny error on floating-point calculations
 
-nano = 1.0e-9
-angstrom = 1.0e-10
+# === FUNCTIONS === #
 
 # zero_if_close
 # --------------------------
@@ -535,39 +538,10 @@ def simplify_crystal_e(r_in,q_in):
 		if q_in[i] == 0:
 			keep[i] = 0
 	return compress(keep,r_in,axis=0), compress(keep,q_in,axis=0)
-	
-
-# calculate_dipole
-# -------------------------
-# calculate_dipole works out the dipole field at a given point within the crystal unit cell
-# ---
-# INPUT
-# a = array of three three-component vectors: the primitive translation vectors in cartesian coordinates
-# mu_frac = a three-component vector of the muon's fractional position within the unit cell
-# r_i = array of N three-component vectors corresponding to the spatial coordinates of the atoms within the crystal
-# mom_i = array of N three-component vectors corresponding to the magnetic moments of the atoms within the crystal
-# const_gyromag = gyromagnetic ratio gamma for the muon, 135.5 MHz/T
-# ---
-# OUTPUT
-# B = the B-field at this point
-def calculate_dipole(mu, r_i, mom_i):
-	relative = mu - r_i
-	r_unit = unit_vectors(relative)
-	#4pi / mu0 (at the front of the dipole eqn)
-	A = 1e-7
-	#initalise dipole field
-	B = zeros(3,float)
-	
-	for i in range(len(relative)):
-		#work out the dipole field and add it to the estimate so far
-		#if relative[i][0] != 0 and relative[i][1] != 0 and relative[i][2] != 0: #999 why does this cause occasional pathological errors?
-		B += A*(3*dot(mom_i[i],r_unit[i])*r_unit[i] - mom_i[i]) / sqrt(dot(relative[i],relative[i]))**3
-		# A(moment_i . r^_i)r^_i - moment_i / |r_mu - r_i|^3
-	return B
 
 def gyro(B):
 	return gamma_mu*sqrt(dot(B,B))
-	
+
 def calculate_V(r_test, r_crystal, q):
 	r = r_crystal - r_test
 	#e / 4pi epsilon0 (at the front of the dipole eqn)

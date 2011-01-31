@@ -1,3 +1,4 @@
+#from http://vpython.org/contents/contributed.html
 
 """
 This module exports a VPython scene as POV-Ray scene description code.

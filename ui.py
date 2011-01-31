@@ -5,6 +5,10 @@ import sys
 import numpy
 
 import langen as lang
+import config
+
+width = config.console_width
+write = sys.stdout.write
 
 def clear():
 	os.system(lang.clearcommand)
@@ -14,33 +18,32 @@ def get_user_input(q):
 	
 def get_menu_input():
 	return raw_input(lang.chooseoption+' ')
-	
-width = 80 #read this as a command-line argument or option or similar
-	
-write = sys.stdout.write
 
 #word-wrap functon
 #cheers to http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/148061
 def wrap(text, width):
 	return reduce(lambda line, word, width=width: '%s%s%s' %
-				  (line,
-				   ' \n'[(len(line)-line.rfind('\n')-1
-						 + len(word.split('\n',1)[0]
-							  ) >= width)],
-				   word),
-				  text.split(' ')
-				 )
+				(line,
+					' \n'[(len(line)-line.rfind('\n')-1
+						+ len(word.split('\n',1)[0]
+								) >= width)],
+						word),
+					text.split(' ')
+				)
 
+def message(text):
+	write(wrap(text,width)+lang.newline)
+	return True
 
 def quit():
 	exit()
-	
+
 def fatalerror(err):
 	print lang.red + lang.bold + 'FATAL ERROR!' + lang.reset + '\n' + wrap(err, width)
 	quit()
 
 def title():
-	version = "v1.0" #999 how to get hold of this from mmcalc main program variable called version?
+	version = "v1.0" #998 how to get hold of this from mmcalc main program variable called version?
 	write(lang.bold + lang.underline + lang.gold + lang.bgblack + ' ' + lang.muon + ' ' + lang.reset +
 	lang.red + lang.bold + lang.underline + ' ' + lang.programname + '  ' + lang.reset + lang.red + lang.underline + lang.url + " "*(width-len(lang.muon+lang.programname+lang.url+lang.version)-5) + lang.reset +
 	lang.underline + lang.version + lang.reset + lang.newline*2)
@@ -87,7 +90,7 @@ def menu(menu,data=False):
 	clear()
 	title()
 	if data != False:
-		write(data+lang.newline)
+		message(data)
 	draw_menu(menu)
 	return get_user_choice(menu)
 
@@ -129,6 +132,12 @@ def inputscreen(q,type='string',min=False,max=False,eqmin=True,eqmax=True,notbla
 					a = numpy.complex(a)
 				except: 
 					error = a + ' is not a valid complex number, eg 1, 5.7 + 3.4j… (remember to use j for √-1)'
+			elif type=='float_or_string':
+				try:
+					a = numpy.float(a)
+					type='float'
+				except: 
+					type='string' #don't worry if it doesn't work...it's just a string
 			elif type=='intlist':
 				a = a.split(',')
 				if number is not False:
@@ -239,6 +248,6 @@ def table(data):
 
 #http://stackoverflow.com/questions/775049/python-time-seconds-to-hms
 def s_to_hms(seconds):
-	m, s = divmod(seconds, 60)
-	h, m = divmod(m, 60)
-	return '%d:%02d:%02d' % (h, m, s)
+	m,s = divmod(seconds,60)
+	h,m = divmod(m,60)
+	return '%d:%02d:%02d' % (h,m,s)

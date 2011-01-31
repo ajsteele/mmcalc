@@ -1,3 +1,5 @@
+# Many thanks to the StackOverflow community, who pointed out how to optimise this in NumPy and make it run about 100x faster!
+# http://stackoverflow.com/questions/2586749/what-is-the-most-platform-and-python-version-independent-way-to-make-a-fast-loop
 import numpy as np
 
 def reshape_array(a):

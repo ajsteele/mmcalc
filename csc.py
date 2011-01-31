@@ -1,3 +1,6 @@
+# TO DO:
+#  * Make the read function read all metadata, not just the title!
+
 import numpy
 import datetime
 
@@ -19,18 +22,9 @@ def begin(meta,properties,filename):
 	for property in properties:
 		columns += (property+'\t')
 	columns = columns[:-1]+'\n'
-	f.write(columns)	
+	f.write(columns)
 	return f
 
-def write(title,properties,attr,filename):
-	global version
-	f=begin(title,properties,filename)
-	#then numbers...
-	for i in range(len(attr)):
-		append(attr[i],f)
-	f.close()
-	return True
-	
 def append(attr,file):
 	cscline=''
 	for j in range(len(attr)):
@@ -40,11 +34,93 @@ def append(attr,file):
 	file.write(cscline)
 	return True
 
+def write(meta,properties,attr,filename):
+	global version
+	f=begin(meta,properties,filename)
+	#then numbers...
+	for i in range(len(attr)):
+		append(attr[i],f)
+	f.close()
+	return True
+
+def close(file):
+	file.close()
+
 def vector_update(dict,vname,vkey,val,dim=3):
 	if not dict.has_key(vname):
 		dict[vname] = numpy.zeros(dim,numpy.float)
 	dict[vname][vkey] = numpy.float(val)
 	return dict
+
+def begin_read(filename):
+	f=open(filename, 'r')
+	meta = {}
+	properties = False
+	while True:
+		line = f.readline()
+		if(line[0] != '#'):
+			#discard the \n and/or \r characters
+			line = line.replace('\r','').replace('\n','')
+			#explode it by tabs to separate position and properties
+			line=line.split('\t')
+			#first line should be a tab-separated list of property names
+			if properties is False:
+				properties = line
+				return meta,properties,f
+		elif line[0:len('# title=')] == '# title=':
+				meta['title'] = line[len('# title='):].replace('\r','').replace('\n','') #ie everything after = but not line breaks
+
+def readline(f,properties):
+	line = f.readline()
+	#readline returns a blank string when EOF reached
+	if line != '':
+		#if the first character isn't a hash, which implies comment
+		if(line[0] != '#'):
+			#discard the \n and/or \r characters
+			line = line.replace('\r','').replace('\n','')
+			#explode it by tabs to separate position and properties
+			line=line.split('\t')
+			if len(line) == len(properties):
+				line_values = {}
+				for i in range(len(properties)):
+					if properties[i] == 'r_x':
+						line_values = vector_update(line_values,'r',0,line[i])
+					elif properties[i] == 'r_y':
+						line_values = vector_update(line_values,'r',1,line[i])
+					elif properties[i] == 'r_z':
+						line_values = vector_update(line_values,'r',2,line[i])
+					elif properties[i] == 'u_x':
+						line_values = vector_update(line_values,'u',0,line[i])
+					elif properties[i] == 'u_y':
+						line_values = vector_update(line_values,'u',1,line[i])
+					elif properties[i] == 'u_z':
+						line_values = vector_update(line_values,'u',2,line[i])
+					elif properties[i] == 'mu_x':
+						line_values = vector_update(line_values,'m',0,line[i])
+					elif properties[i] == 'mu_y':
+						line_values = vector_update(line_values,'m',1,line[i])
+					elif properties[i] == 'mu_z':
+						line_values = vector_update(line_values,'m',2,line[i])
+					elif properties[i] == 'B_x':
+						line_values = vector_update(line_values,'B',0,line[i])
+					elif properties[i] == 'B_y':
+						line_values = vector_update(line_values,'B',1,line[i])
+					elif properties[i] == 'B_z':
+						line_values = vector_update(line_values,'B',2,line[i])
+					elif properties[i] == 'q':
+						line_values['q'] = numpy.int(line[i])
+					elif properties[i] == 'omega':
+						line_values['omega'] = numpy.float(line[i])
+					#anything else just outputs a string; this includes element name
+					else:
+						line_values[properties[i]] = line[i]
+				return line_values,None
+			else:
+				return None, 'Number of elements in line not equal to number of properties.'
+		else:
+			return None, 'This line is a comment.'
+	else:
+		return None, 'EOF'
 
 def read(filename):
 	f=open(filename, 'r')
@@ -97,10 +173,10 @@ def read(filename):
 						#anything else just outputs a string; this includes element name
 						else:
 							line_values[properties[i]] = line[i]
-						values.append(line_values)
+					values.append(line_values)
 				else:
 					error.append('Wrong number of values on line '+str(i)+' (expecting '+str(len(properties))+', received '+str(len(line))+')')
 		elif line[0:len('# title=')] == '# title=':
-			title = line[len('# title='):-1] #ie everything after = but before \n
+			title = line[len('# title='):].replace('\r','').replace('\n','') #ie everything after = but not line breaks
 		i += 1
 	return title,values,error

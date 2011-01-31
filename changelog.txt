@@ -1,6 +1,15 @@
-1.0.5.1
+1.1
+ *** QUASI-BAYESIAN DIPOLE FIELD ANALYSIS! ***
+ * It is now possible to constrain muon sites with respect to atomic positions.
+ * Histogramming functions added.
+ *** SWISHNESS! ***
+ * Now just type 'mmcalc' at the Windows/Unix command line to start the program!
+ *** UNDER THE BONNET/BUGFIXES! ***
+ * numpy module renamed np in main program.
+ * Loop bug fixed--no longer loads every value from a CSC *.tsv value as many times as there are columns in that file! Achieved by removing a single erroneous tab.
 
-* Fixes accidental missed variable name change which stops the program calculating dipole fields!
+1.0.5.1
+ * Fixes accidental missed variable name change which stops the program calculating dipole fields!
 
 1.0.5
  *** CRYSTAL STRUCTURE FILES WILL NO LONGER OPEN UNLESS THEY ARE CALLED '*-crystal-structure.json' where * is a wildcard for any name you like. MmCalc will automatically add this to new files, so there is no need to append it when asked to specify a filename. ***
@@ -23,7 +32,7 @@
 
 1.0.3
  * Massive speed increase in the loop which calculates dipole fields (~50-100x) thanks to executing the loop entirely in NumPy rather than as a Python for loop.
- ** See http://stackoverflow.com/questions/2586749/what-is-the-most-platform-and-python-version-independent-way-to-make-a-fast-loop
+  * See http://stackoverflow.com/questions/2586749/what-is-the-most-platform-and-python-version-independent-way-to-make-a-fast-loop
  * Some minor bugfixes
 
 1.0.1
