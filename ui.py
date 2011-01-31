@@ -2,7 +2,7 @@
 
 import os
 import sys
-import numpy
+import numpy as np
 
 import langen as lang
 import config
@@ -35,19 +35,22 @@ def message(text):
 	write(wrap(text,width)+lang.newline)
 	return True
 
-def quit():
+def quit(error=False):
+	# if there are no errors, then print bye bye...leave the error on-screen if not!
+	if not(error):
+		clear()
+		message(lang.goodbye)
 	exit()
 
 def fatalerror(err):
 	print lang.red + lang.bold + 'FATAL ERROR!' + lang.reset + '\n' + wrap(err, width)
-	quit()
+	quit(error=True)
 
 def title():
-	version = "v1.0" #998 how to get hold of this from mmcalc main program variable called version?
 	write(lang.bold + lang.underline + lang.gold + lang.bgblack + ' ' + lang.muon + ' ' + lang.reset +
 	lang.red + lang.bold + lang.underline + ' ' + lang.programname + '  ' + lang.reset + lang.red + lang.underline + lang.url + " "*(width-len(lang.muon+lang.programname+lang.url+lang.version)-5) + lang.reset +
 	lang.underline + lang.version + lang.reset + lang.newline*2)
-	
+
 def heading(text):
 	return lang.newline + "="*(int((width-len(text)-2)/2)) + ' ' + text + ' ' + "="*(int((width-len(text)-2)/2)) + lang.newline
 
@@ -60,7 +63,7 @@ def draw_menu(menu):
 			padding = ' ('
 			ending = ')'
 			if len(info) > width - len(menuitem+padding+ending):
-				info = info[:(width-len(menuitem+padding)-2)]+'…'
+				info = info[:(width-len(menuitem+padding)-len(lang.ellipsis_short)-2)]+lang.ellipsis_short+')'
 				write(menuitem + lang.grey + padding + info + lang.reset  + lang.newline)
 			else:
 				write(menuitem + lang.grey + padding + info + lang.grey + ending + lang.reset + lang.newline)
@@ -101,12 +104,13 @@ def option(menu,notblank=False):
 	return get_user_option(menu,notblank)
 
 #eqmin and eqmax are True if a value is allowed to be equal to the respective bound, and False if it must be within those bounds
-def inputscreen(q,type='string',min=False,max=False,eqmin=True,eqmax=True,notblank=False,validate=False,text='',number=False):
-	clear()
-	title()
+def inputscreen(q,type='string',min=False,max=False,eqmin=True,eqmax=True,notblank=False,validate=False,text='',number=False,newscreen=True):
+	if newscreen:
+		clear()
+		title()
 	error=''
 	write (text+'\n')
-	while 1:
+	while True:
 		write (lang.red+error+lang.reset+lang.newline)
 		error=''
 		a = get_user_input(q)
@@ -119,22 +123,22 @@ def inputscreen(q,type='string',min=False,max=False,eqmin=True,eqmax=True,notbla
 		else:
 			if type=='float':
 				try:
-					a = numpy.float(a)
+					a = np.float(a)
 				except: 
 					error = a + ' is not a number. Please enter a valid number, eg 2, 3.142, 6.63e-34…'
 			elif type=='int':
 				try:
-					a = numpy.int(a)
+					a = np.int(a)
 				except: 
 					error = a + ' is not an integer. Please enter a whole number!'
 			elif type=='complex':
 				try:
-					a = numpy.complex(a)
+					a = np.complex(a)
 				except: 
 					error = a + ' is not a valid complex number, eg 1, 5.7 + 3.4j… (remember to use j for √-1)'
 			elif type=='float_or_string':
 				try:
-					a = numpy.float(a)
+					a = np.float(a)
 					type='float'
 				except: 
 					type='string' #don't worry if it doesn't work...it's just a string
@@ -145,7 +149,7 @@ def inputscreen(q,type='string',min=False,max=False,eqmin=True,eqmax=True,notbla
 						error = 'You must enter exactly '+str(number)+' values'
 				for i in range(len(a)):
 					try:
-						a[i] = numpy.int(a[i])
+						a[i] = np.int(a[i])
 						if min is not False and eqmin is True:
 							if a[i] < min:
 								error = 'Values must all be >= ' + str(min)
@@ -167,7 +171,7 @@ def inputscreen(q,type='string',min=False,max=False,eqmin=True,eqmax=True,notbla
 						error = 'You must enter exactly '+str(number)+' values'
 				for i in range(len(a)):
 					try:
-						a[i] = numpy.float(a[i])
+						a[i] = np.float(a[i])
 						if min is not False and eqmin is True:
 							if a[i] < min:
 								error = 'Values must all be >= ' + str(min)
@@ -235,14 +239,14 @@ def info(info):
 def table(data):
 	#make sure they're strings
 	#998 catch if data is a different width on the way down...
-	cellwidth = int(width/len(data[0]))
+	cellwidth = np.floor((width-1)/len(data[0]))
 	table = ''
 	for row in data:
 		for cell in row:
 			if len(cell) >= cellwidth:
-				table += cell[:cellwidth-2]+"… "
+				table += cell[:cellwidth-len(ellipsis_short)-1]+ellipsis_short+' '
 			else:
-				table += cell+" "*(cellwidth-len(cell))
+				table += cell+' '*(cellwidth-len(cell))
 		table += lang.newline
 	return table
 
@@ -251,3 +255,26 @@ def s_to_hms(seconds):
 	m,s = divmod(seconds,60)
 	h,m = divmod(m,60)
 	return '%d:%02d:%02d' % (h,m,s)
+
+def charge_str(q):
+	if q == 0:
+		return str('0')
+	elif q < 0:
+		return str(abs(q))+'-'
+	else:
+		return str(q)+'+'
+
+def complex_str(x):
+	#if it's just a real number
+	if np.imag(x) == 0:
+		return str(np.real(x))
+	elif np.real(x) == 0:
+		return str(np.imag(x))+'j'
+	else:
+		return str(np.real(x))+'+'+str(np.imag(x))+'j'
+		
+def list_str(l):
+	if len(l):
+		return str(l)[1:-1] #just chops off square brackets
+	else:
+		return lang.empty

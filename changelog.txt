@@ -3,7 +3,8 @@
  * It is now possible to constrain muon sites with respect to atomic positions.
  * Histogramming functions added.
  *** SWISHNESS! ***
- * Now just type 'mmcalc' at the Windows/Unix command line to start the program!
+ * Now just type 'mmcalc' at the Windows/Unix command line to start the program.
+ * Label atoms with element names, and subsequent characters to distinguish atoms are ignored by the visualisation routines--so F1 appears as a green fluorine, but can be distinguished when specifying muon site constraints.
  *** UNDER THE BONNET/BUGFIXES! ***
  * numpy module renamed np in main program.
  * Loop bug fixed--no longer loads every value from a CSC *.tsv value as many times as there are columns in that file! Achieved by removing a single erroneous tab.

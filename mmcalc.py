@@ -1,54 +1,71 @@
 ﻿# coding=utf-8
+# MmCalc--a muon-orientated dipole field calculating program
+# http://andrewsteele.co.uk/mmcalc/
+# VERSION 1.1.development
 
-# VERSION 1.0.development
-#global variable for MmCalc version number
-# 999 - currently doesn't work in imported modules...what is the standard way to get around this?
-version = '1.0.dev'
-
-#this code is commented with markers for things which need improving/would be nice. Simply search for the numbers.
+# this code is commented with markers for things which need improving/would be nice. Simply search for the numbers.
 # 999 - need
 # 998 - would be nice
 
-# I've never experienced any problems importing these standard Python modules
+# import these standard Python modules
 import os
 import platform
 import time
+import re # regular expressions
 
-import ui
-import langen as lang
+# import mmcalc files
+import ui # user interface functions
+import langen as lang # the internationalisation file...change langen to a different filename, but always import as lang
+import config # configuration values
 
 # numpy needs to be installed
 # 998 - should this try to import Numeric? Does that work too?
 try:
 	import numpy as np
 except:
-	ui.fatalerror("Error importing Numeric Python module. Please make sure the module 'numpy' is installed. See http://numpy.scipy.org/")
+	ui.fatalerror(lang.err_numpy)
 
 # JSON support is only built-in by default after Python 2.6
 try:
 	import simplejson as json
 except ImportError:
 	try:
-		import json 
+		import json
 	except:
-		ui.fatalerror("Error importing JSON module. If you are using Python < 2.6, install the module 'simplejson' and try again. Python 2.6+ and 3.0+ should include the 'json' module as standard.")
+		ui.fatalerror(lang.err_json)
 
-# these modules are all part of the program so should just work...
+# these modules are all distributed with MmCalc so should just work...
 import sg
 import difn
 import difast
 import didraw
 import csc
-#to export drawings into http://vpython.org/contents/contributed.html
 import povexport
 
+# clear the console
 ui.clear()
 
-#global variables for the visualisation window
+# initialise global variables for the visualisation window
 visual_window = None
 visual_window_contents = None
 
-# JSON is not able to serialise complex number objects. These custom functions change any errant complex numbers into a JSON-friendly dictionary.
+# first-run initialisation: check for the presence of the current/ and
+# output/ directories, and create them if absent.
+for dir in [config.current_dir,config.output_dir]:
+    if !os.path.isdir(dir):
+        os.mkdir(dir)
+
+# from http://effbot.org/zone/python-list.htm this finds all occurrences of value in a Python list
+# it's a generator--hence use of yield--and so should be used as in for stuff in findall(L, x) etc...
+def findall(L, value, start=0):
+	i = start - 1
+	try:
+		i = L.index(value, i+1)
+		yield i
+	except ValueError:
+		pass
+
+# JSON is not able to serialise complex number objects. These custom functions change any errant complex numbers into a dictionary, which JSON can encode
 def complex_serialise(a):
 	if a.__class__.__name__ == 'dict': #if it's a Python dictionary, do this function on all sub-elements thereof
 		for key in iter(a):
@@ -84,12 +101,12 @@ def json_custom_load(filename):
 	return complex_unserialise(stuff)
 
 def save_current(variablename,stuff):
-	json_custom_save("current/"+variablename+'.json',stuff)
+	json_custom_save(config.current_dir+'/'+variablename+'.json',stuff)
 
 def load_current(variablename):
 	#check if the file exists
-	if os.path.exists("current/"+variablename+'.json'):
-		stuff = json_custom_load("current/"+variablename+'.json')
+	if os.path.exists(config.current_dir+'/'+variablename+'.json'):
+		stuff = json_custom_load(config.current_dir'/'+variablename+'.json')
 		return stuff
 	#if not, just return a blank dictionary
 	else:
@@ -131,6 +148,7 @@ def update_value(dictionaryname, key, value):
 	data[key] = value
 	#overwrite old with new
 	save_current(dictionaryname,data)
+	return True
 
 def option_toggle(dictionaryname,key,goto):
 	data = load_current("draw")
@@ -140,6 +158,43 @@ def option_toggle(dictionaryname,key,goto):
 		a = True
 	update_value(dictionaryname,key,a)
 	return goto
+
+# get_length_unit
+# --------------------------
+# Turns the stored string representing which length unit to use into a premultiplication factor and a human-readable string.
+# ---
+# INPUT
+# stored_val = the string stored...usually passed as crystal_data['length_unit'], which can be 'n', 'a' or 'm'
+# ---
+# OUTPUT
+# the premultiplier = 1e-9, 1e-10 or 1
+# human-readable form = nm, angstrom symbol or m
+def get_length_unit(stored_val):
+	if stored_val == 'n':
+		return difn.nano, lang.nm
+	elif stored_val == 'a':
+		return difn.angstrom, lang.angstrom
+	else:
+		return 1.0, lang.m
+
+# labels2elements
+# --------------------------
+# Receives a list of atom labels (eg F1, Cu124 etc) and returns just the element string at the beginning, or the string itself if there is no element-like string present.
+# ---
+# INPUT
+# names = a list of atoms' names
+# ---
+# OUTPUT
+# names = cleaned-up list of atom element names
+def labels2elements(names):
+	element_pattern = re.compile('[A-Z][a-z]?') #matches a capital, optionally followed by a lower-case
+	#go through the names, stripping anything which doesn't match
+	for i in range(len(names)):
+		element_name = element_pattern.match(names[i]).group(0)
+		#only update if an element name is found...
+		if element_name is not None:
+			names[i] = element_name
+	return names
 
 def get_csc(directory,suffix,default_filename,file_description=''):
 	errtext=''
@@ -171,9 +226,9 @@ def crystal():
 		menu_data['spacegroup'] = ''
 	if crystal_data.has_key('length_unit'):
 		if crystal_data['length_unit'] == 'n':
-			menu_data['length_unit'] = 'nm'
+			menu_data['length_unit'] = lang.nm
 		elif crystal_data['length_unit'] == 'm':
-			menu_data['length_unit'] = 'm'
+			menu_data['length_unit'] = lang.m
 		elif crystal_data['length_unit'] == 'a':
 			menu_data['length_unit'] = lang.angstrom
 		menu_data['length_unit'] = lang.grey + menu_data['length_unit'] + lang.reset
@@ -213,9 +268,9 @@ def crystal():
 	['a','a',a,menu_data['a']],
 	['b','b',b,menu_data['b']],
 	['c','c',c,menu_data['c']],
-	['1','alpha',alpha,menu_data['alpha']],
-	['2','beta',beta,menu_data['beta']],
-	['3','gamma',gamma,menu_data['gamma']],
+	['1',lang.alpha,alpha,menu_data['alpha']],
+	['2',lang.beta,beta,menu_data['beta']],
+	['3',lang.gamma,gamma,menu_data['gamma']],
 	['t','atoms',atoms_menu,menu_data['atoms']],
 	['m','magnetic properties',magnetic_properties_menu,''],
 	['d','draw crystal',draw_crystal,''],
@@ -225,6 +280,7 @@ def crystal():
 	])
 
 def crystal_length(axis):
+	#998 more complex constraints based on space group?
 	crystal_data = load_current("crystal")
 	if crystal_data.has_key('length_unit'):
 		if crystal_data['length_unit'] == 'n':
@@ -333,8 +389,11 @@ def atoms_table():
 		for atom in atoms:
 			atom_row = []
 			atom_row.append(str(i))
-			for property in atom:
-				atom_row.append(str(property))
+			atom_row.append(atom[0]) # element
+			atom_row.append(str(atom[1])) # x
+			atom_row.append(str(atom[2])) # y
+			atom_row.append(str(atom[3])) # z
+			atom_row.append(ui.charge_str(atom[4])) # q
 			atoms_table_array.append(atom_row)
 			i += 1
 		return ui.table(atoms_table_array)
@@ -401,11 +460,11 @@ def edit_atom():
 		edit_me = 1
 	atom = []
 	#998 make a way to get these all on one screen
-	atom.append(ui.inputscreen('    element (blank for '+str(atoms[edit_me-1][0])+'):','string'))
-	atom.append(ui.inputscreen('          x (blank for '+str(atoms[edit_me-1][1])+'):','float',0,1))
-	atom.append(ui.inputscreen('          y (blank for '+str(atoms[edit_me-1][2])+'):','float',0,1))
-	atom.append(ui.inputscreen('          z (blank for '+str(atoms[edit_me-1][3])+'):','float',0,1))
-	atom.append(ui.inputscreen('       q (e) (blank for '+str(atoms[edit_me-1][4])+'):','int'))
+	atom.append(ui.inputscreen('    element (blank for '+str(atoms[edit_me-1][0])+'):','string',newscreen=False))
+	atom.append(ui.inputscreen('          x (blank for '+str(atoms[edit_me-1][1])+'):','float',0,1,newscreen=False))
+	atom.append(ui.inputscreen('          y (blank for '+str(atoms[edit_me-1][2])+'):','float',0,1,newscreen=False))
+	atom.append(ui.inputscreen('          z (blank for '+str(atoms[edit_me-1][3])+'):','float',0,1,newscreen=False))
+	atom.append(ui.inputscreen('       q (e) (blank for '+str(atoms[edit_me-1][4])+'):','int',newscreen=False))
 	for i in range(len(atom)):
 		if atom[i] is not False:
 			atoms[edit_me-1][i] = atom[i]
@@ -422,7 +481,7 @@ def vector_table(vectors_name, vectors,offset=0):
 		row = []
 		row.append(str(i))
 		for component in vector:
-			row.append(str(component))
+			row.append(ui.complex_str(component))
 		table_array.append(row)
 		i += 1
 	return ui.table(table_array)
@@ -433,16 +492,18 @@ def generated_atoms_table(crystal_data):
 		atoms = crystal_data['generated_atoms']
 		properties = crystal_data['generated_atoms_properties']
 		atoms_table_array = []
-		atoms_table_array.append(['#','element','x','y','z','q','m','k']) #lang.bold+'m'+lang.reset,lang.bold+'k'+lang.reset]) #it would be nice to make this bold, but the column length counter doesn't ignore control codes at the moment so they just appear as ellipses
-		for i in range(len(crystal_data['generated_atoms'])):
+		atoms_table_array.append(['#','element','x','y','z','q','m','k']) #998 lang.bold+'m'+lang.reset,lang.bold+'k'+lang.reset]) #it would be nice to make this bold, but the column length counter doesn't ignore control codes at the moment so they just appear as ellipses
+		for i in range(len(atoms)):
 			atom_row = []
 			atom_row.append(str(i+1))
-			for property in crystal_data['generated_atoms'][i]:
-				atom_row.append(str(property))
-			for property in properties[i]:
-				atom_row.append(str(property))
+			atom_row.append(atoms[i][0]) # element
+			atom_row.append(str(atoms[i][1])) # x
+			atom_row.append(str(atoms[i][2])) # y
+			atom_row.append(str(atoms[i][3])) # z
+			atom_row.append(ui.charge_str(atoms[i][4])) # q
+			atom_row.append(ui.list_str(properties[i][0])) # m
+			atom_row.append(ui.list_str(properties[i][1])) # k
 			atoms_table_array.append(atom_row)
-			i += 1
 		return ui.table(atoms_table_array)
 	else:
 		return ''
@@ -473,7 +534,6 @@ def generate_atoms():
 	update_value('crystal','generated_atoms',crystal_data['generated_atoms'])
 	update_value('crystal','generated_atoms_properties',crystal_data['generated_atoms_properties'])
 	return load_current('crystal')
-
 
 def magnetic_properties_menu():
 	crystal_data = load_current('crystal')
@@ -509,16 +569,12 @@ def magnetic_properties_menu():
 			menu_data += lang.newline+lang.red+'You need to define some atoms and a space group.'+lang.reset
 	menu_options.append(['q','back to crystal menu',crystal,''])
 	return ui.menu(menu_options,menu_data)
-	
-def edit_generated_atoms():
-	pass
 
 def add_m():
 	newm=[]
-	#998 make a way to get these all on one screen
-	newm.append(ui.inputscreen('  m_x (units of µ_B, complex):','complex',notblank=True))
-	newm.append(ui.inputscreen('  m_y (units of µ_B, complex):','complex',notblank=True))
-	newm.append(ui.inputscreen('  m_z (units of µ_B, complex):','complex',notblank=True))
+	newm.append(ui.inputscreen(lang.add_mx,'complex',notblank=True,newscreen=False))
+	newm.append(ui.inputscreen(lang.add_my,'complex',notblank=True,newscreen=False))
+	newm.append(ui.inputscreen(lang.add_mz,'complex',notblank=True,newscreen=False))
 	#load the old atoms
 	crystal_data = load_current('crystal')
 	if crystal_data.has_key('m'):
@@ -527,15 +583,21 @@ def add_m():
 		m = []
 	m.append(newm)
 	update_value('crystal','m',m)
+	#and go through adding 1 to any references to k-vectors in the atoms
+	for i in range(len(crystal_data['generated_atoms_properties'])):
+		n_vectors = len(crystal_data['generated_atoms_properties'][i][0])
+		if n_vectors >0:
+			for j in range(n_vectors):
+				crystal_data['generated_atoms_properties'][i][1][j] += 1
+	update_value('crystal','generated_atoms_properties',crystal_data['generated_atoms_properties'])
 	return magnetic_properties_menu
 	
 def add_k():
 	newk=[]
-	#998 make a way to get these all on one screen
-	#is it always true that |k|/pi <= 0.5 because it should be in the first BZ?
-	newk.append(ui.inputscreen('    k_x/2π:','complex',notblank=True))
-	newk.append(ui.inputscreen('    k_y/2π:','complex',notblank=True))
-	newk.append(ui.inputscreen('    k_z/2π:','complex',notblank=True))
+	#998 is it always true that |k|/pi <= 0.5 because it should be in the first BZ?
+	newk.append(ui.inputscreen(lang.add_kx,'complex',notblank=True,newscreen=False))
+	newk.append(ui.inputscreen(lang.add_kx,'complex',notblank=True,newscreen=False))
+	newk.append(ui.inputscreen(lang.add_kx,'complex',notblank=True,newscreen=False))
 	#load the old atoms
 	crystal_data = load_current('crystal')
 	if crystal_data.has_key('k'):
@@ -570,9 +632,37 @@ def delete_m_or_k():
 		if kill_me <= len(m):
 			del m[kill_me-1]
 			update_value('crystal','m',m)
+			#and go through removing references to that m-vector, the corresponding k-vector, and subtracting 1 from any references to k-vectors in the atoms
+			for i in range(len(crystal_data['generated_atoms_properties'])):
+				n_vectors = len(crystal_data['generated_atoms_properties'][i][0])
+				if n_vectors > 0:
+					for j in findall(crystal_data['generated_atoms_properties'][i][0],kill_me):
+						del crystal_data['generated_atoms_properties'][i][0][j] #delete m item on list
+						del crystal_data['generated_atoms_properties'][i][1][j] #delete corresponding k
+					n_vectors = len(crystal_data['generated_atoms_properties'][i][0]) #re-measure after deletions
+					for j in range(n_vectors):
+						#if the m-vector value is greater than the one just deleted, subtract 1
+						if crystal_data['generated_atoms_properties'][i][0][j] > kill_me:
+							crystal_data['generated_atoms_properties'][i][0][j] -= 1
+						# all k numbers are > m numbers, so subtract 1 regardless
+						crystal_data['generated_atoms_properties'][i][1][j] -= 1
+			update_value('crystal','generated_atoms_properties',crystal_data['generated_atoms_properties'])
 		else:
 			del k[kill_me-len(m)-1]
 			update_value('crystal','k',k)
+			#go through removing references to that k-vector and the corresponding m-vector
+			for i in range(len(crystal_data['generated_atoms_properties'])):
+				n_vectors = len(crystal_data['generated_atoms_properties'][i][0])
+				if n_vectors > 0:
+					for j in findall(crystal_data['generated_atoms_properties'][i][1],kill_me):
+						del crystal_data['generated_atoms_properties'][i][1][j] #delete k item on list
+						del crystal_data['generated_atoms_properties'][i][0][j] #delete corresponding m
+					#if the k-vector value is greater than the one just deleted, subtract 1
+					n_vectors = len(crystal_data['generated_atoms_properties'][i][0]) #re-measure after deletions
+					for j in range(n_vectors):
+						if crystal_data['generated_atoms_properties'][i][1][j] > kill_me:
+							crystal_data['generated_atoms_properties'][i][1][j] -= 1
+			update_value('crystal','generated_atoms_properties',crystal_data['generated_atoms_properties'])
 	return magnetic_properties_menu
 
 def edit_m_or_k():
@@ -598,18 +688,18 @@ def edit_m_or_k():
 	if edit_me is not False:
 		if edit_me <= len(m):
 			newm = []
-			newm.append(ui.inputscreen('  m_x (blank for '+str(m[edit_me-1][0])+'):','complex'))
-			newm.append(ui.inputscreen('  m_y (blank for '+str(m[edit_me-1][1])+'):','complex'))
-			newm.append(ui.inputscreen('  m_z (blank for '+str(m[edit_me-1][2])+'):','complex'))
+			newm.append(ui.inputscreen(lang.edit_mx_1+str(m[edit_me-1][0])+lang.edit_m_2,'complex',newscreen=False))
+			newm.append(ui.inputscreen(lang.edit_my_1+str(m[edit_me-1][1])+lang.edit_m_2,'complex',newscreen=False))
+			newm.append(ui.inputscreen(lang.edit_mz_1+str(m[edit_me-1][2])+lang.edit_m_2,'complex',newscreen=False))
 			for i in range(len(newm)):
 				if newm[i] is not False:
 					m[edit_me-1][i] = newm[i]
 			update_value('crystal','m',m)
 		else:
 			newk = []
-			newk.append(ui.inputscreen('    k_x/π (blank for '+str(k[edit_me-len(m)-1][0])+'):','complex'))
-			newk.append(ui.inputscreen('    k_y/π (blank for '+str(k[edit_me-len(m)-1][1])+'):','complex'))
-			newk.append(ui.inputscreen('    k_z/π (blank for '+str(k[edit_me-len(m)-1][2])+'):','complex'))
+			newk.append(ui.inputscreen(lang.edit_kx_1+str(k[edit_me-len(m)-1][0])+lang.edit_k_2,'complex',newscreen=False))
+			newk.append(ui.inputscreen(lang.edit_ky_1+str(k[edit_me-len(m)-1][1])+lang.edit_k_2,'complex',newscreen=False))
+			newk.append(ui.inputscreen(lang.edit_kz_1+str(k[edit_me-len(m)-1][2])+lang.edit_k_2,'complex',newscreen=False))
 			for i in range(len(newk)):
 				if newk[i] is not False:
 					k[edit_me-len(m)-1][i] = newk[i]
@@ -634,9 +724,9 @@ def edit_atom_m_and_k():
 	#otherwise, allow them to edit the only existent atom by default
 	else:
 		edit_me = 1
-	#the actual internal array starts at zero, so subtract the offset
-	edit_me -= 1
 	if edit_me is not False:
+		#the actual internal array starts at zero, so subtract the offset
+		edit_me -= 1
 		extrainfo = ''
 		menu_data = ui.heading('m vectors')
 		menu_data += vector_table('m',crystal_data['m'])
@@ -789,6 +879,7 @@ def draw_crystal_unit_cell():
 		atoms_r[i] = atoms_r[i][0]*a[0]+atoms_r[i][1]*a[1]+atoms_r[i][2]*a[2]
 		#and split up the attributes into name, charge etc
 		atoms_names.append(atoms_attr[i][0])
+	atoms_names = labels2elements(atoms_names)
 	atoms_r = difn.zero_if_close(atoms_r)
 	visual_window_contents['atoms'] = didraw.draw_atoms(atoms_r,atoms_names,[],[],'e',scale,{}) #draw completely standard, coloured by element etc, to avoid hiding points
 	return draw_crystal
@@ -804,6 +895,7 @@ def draw_magnetic_unit_cell():
 	r_i,q_i,mu_i,names_i = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], L)
 	#then delete all atoms outside the magnetic unit cell
 	r_i,q_i,mu_i,names_i = difn.make_crystal_trim_para(r_i,q_i,mu_i,names_i,a_cart,L)
+	names_i = labels2elements(names_i)
 	scale = draw_data['scale']
 	if(visual_window is None):
 		visual_window = didraw.initialise('nostereo')
@@ -836,6 +928,7 @@ def draw_draw():
 	r_i,q_i,mu_i,names_i = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], L)
 	#then delete all atoms outside the magnetic unit cell
 	r_i,q_i,mu_i,names_i = difn.make_crystal_trim_para(r_i,q_i,mu_i,names_i,a_cart,L)
+	names_i = labels2elements(names_i)
 	scale = draw_data['scale']
 	#delete the old 3D window
 	if visual_window is not None:
@@ -868,7 +961,7 @@ def draw_draw():
 	#if the field is visible, load it and draw it
 	if draw_data['field_visible']:
 		print 'Drawing dipole field of ',
-		title, values, error = csc.read('output'+'/'+draw_data['field_filename']+'-dipole-field.tsv') #998 do something with error?
+		title, values, error = csc.read(config.output_dir+'/'+draw_data['field_filename']+'-dipole-field.tsv') #998 do something with error?
 		print '\''+title+'\'...'
 		r_field,B_field,omega_field = csc_to_dipole_field(values)
 		omega_minmax = draw_data['omega_minmax']
@@ -910,44 +1003,59 @@ def draw_magnetic_unit_cell_from_crystal():
 	return draw_crystal
 	
 def save_crystal():
-	return save_output('crystal','crystal structure','output','-crystal-structure',crystal)
+	return save_output('crystal','crystal structure',config.output_dir,'-crystal-structure',crystal)
 
 def load_crystal():
-	return load_output('crystal','crystal structure','output','-crystal-structure',crystal)
+	return load_output('crystal','crystal structure',config.output_dir,'-crystal-structure',crystal)
 
+# dipole
+# --------------------------
+# The dipole menu for setting up and performing dipole field calculations
 def dipole():
 	dipole_data = load_current('dipole')
+	crystal_data = load_current('crystal')
 	menu_data = {}
 	if dipole_data.has_key('r_sphere'):
 		menu_data['v_size'] = 'r='+str(dipole_data['r_sphere'])
 	else:
 		menu_data['v_size'] = lang.red+'not set'+lang.reset
-	if dipole_data.has_key('n_a') and dipole_data.has_key('n_b') and dipole_data.has_key('n_c'):
-		menu_data['n_points'] = 'n_a='+str(dipole_data['n_a'])+', n_b='+str(dipole_data['n_b'])+', n_c='+str(dipole_data['n_c'])
+	if dipole_data.has_key('pointgen'):
+		if dipole_data['pointgen'] == 'g':
+			menu_data['points'] = 'grid; n_a='+str(dipole_data['n_a'])+', n_b='+str(dipole_data['n_b'])+', n_c='+str(dipole_data['n_c'])
+		elif dipole_data['pointgen'] == 'm':
+			menu_data['points'] = 'Monte Carlo; n='+str(dipole_data['n_monte'])
 	else:
-		menu_data['n_points'] = lang.red+'not set'+lang.reset
+		menu_data['points'] = lang.red+'not set'+lang.reset
+	if dipole_data.has_key('constraints') and len(dipole_data['constraints']) > 0 and crystal_data.has_key('length_unit'):
+		length_unit, length_unit_name = get_length_unit(crystal_data['length_unit'])
+		menu_data['constraints'] = constraints_readable(dipole_data['constraints'],length_unit_name)
+	else:
+		menu_data['constraints'] = lang.red+'not set'+lang.reset
+
 	return ui.menu([
-#	['s','vcrystal shape',vcrystal_shape,'only spherical possible at the moment'],	
-	['c','convergence test',convergence_test,''],
-	['z','vcrystal size',vcrystal_size,menu_data['v_size']],
-	['n','number of points',n_points,menu_data['n_points']],
+#	['s','vcrystal shape',dipole_vcrystal_shape,'only spherical possible at the moment'],#998 is there any point in this?
+	['c','convergence test',dipole_convergence_test,''],
+	['z','vcrystal size',dipole_vcrystal_size,menu_data['v_size']],
+	['p','points',dipole_points,menu_data['points']],
+	['m','muon site constraints',dipole_constraints,menu_data['constraints']],
 	['e','evaluate dipole field by direct summation',calculate_dipole,''],
-	['m','evaluate dipole field near muonophiles',calculate_dipole_near_muonophile,''],
-	['s','symmetry eqv',dipole_symmetry_eqv,''], #999
+#	['s','symmetry eqv',dipole_symmetry_eqv,''], #999
 	['d','draw dipole field',draw_dipole,''],
 #	['f','draw frequencies',draw_freq,''], #999
 	['h','histogram of frequencies',histo_freq,''],
 	['q','back to main menu',main_menu,'']
 	])
 
-def vcrystal_shape():
+def dipole_vcrystal_shape():
 	pass #998 add this feature?
 
 #999 check this function actually works!!
+#998 merge with Monte Carlo NumPy function?
+#998 apply constraints if they're set?
 def generate_random_position(r,a,tolerance):
 	sorted = False
 	tolerance2 = tolerance*tolerance
-	while sorted != True:
+	while not(sorted):
 		sorted = True
 		r_test = np.random.rand()*a[0]+np.random.rand()*a[1]+np.random.rand()*a[2]
 		#print r_test
@@ -959,11 +1067,18 @@ def generate_random_position(r,a,tolerance):
 				break
 	return r_test
 
-def convergence_test():
+# dipole_convergence_test
+# --------------------------
+# A UI function on the dipole menu
+# ---
+# Try a range of different virtual crystal sizes to evaluate accuracy and time taken for each size
+# 998 - allow some user-specification of which sizes to try?
+# 998 - allow user-specified points to test?
+def dipole_convergence_test():
 	global visual_window
 	global visual_window_contents
 	t_begin = time.clock()
-	draw_data = load_current('draw')
+	#draw_data = load_current('draw') #doesn't seem to be used? 999
 	a,alpha,a_cart,r_atoms,q_atoms,m_atoms,k_atoms,name_atoms = stored_unit_cell()
 	#make a 2x2x2 crystal so if it's close to one in an adjacent cell this isn't missed
 	r,q,mu,name = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], [1,1,1])
@@ -975,7 +1090,7 @@ def convergence_test():
 	#998 these are only in the crystal (not magnetic) unit cell, does that matter?
 	for i in range(len(r_test)):
 		r_test[i] = generate_random_position(r,a_cart,tolerance)
-	scale = draw_data['scale']
+	scale = draw_default_scale()
 	if(visual_window is None):
 		visual_window = didraw.initialise('nostereo')
 	else:
@@ -1018,7 +1133,7 @@ def convergence_test():
 	print ''
 	for radius in range(1,r_max):
 		print 'Testing r = '+str(radius)+'a...'
-		#create vcrystal
+		# create vcrystal
 		L,r,q,mu,name,r_whatisthis = difn.make_crystal(radius,a,alpha,r_atoms,m_atoms,k_atoms, q_atoms, name_atoms,type='magnetic')
 		r_fast = difast.reshape_array(r)
 		mu_fast = difast.reshape_array(mu)
@@ -1034,9 +1149,9 @@ def convergence_test():
 			print 'Drawing vcrystal with r = 10a...'
 			visual_window_contents = {
 			'unitcell':didraw.unitcell_init(a_cart,scale),
-			'atoms':didraw.draw_atoms(r,name,q,mu,'e',scale,{}), #draw completely standard, coloured by element etc, to avoid hiding points
+			'atoms':didraw.draw_atoms(r,name,q,mu,'e',scale,{}), # draw completely standard, coloured by element etc, to avoid hiding points
 			}
-		#do dipole fields at the various points
+		# do dipole fields at the various points
 		for i in range(len(r_test)):
 			t_start = time.clock()
 			r_test_fast = difast.reshape_vector(r_test[i]) #998 bit inefficient to calculate this every time
@@ -1045,7 +1160,7 @@ def convergence_test():
 			omega[radius][i] = difn.gyro(B[radius][i])
 			t[radius][i] = t_stop - t_start
 			error[radius][i] = np.abs(np.round((omega[radius][i]-omega_perfect[i])/omega_perfect[i],decimals=4))*100
-	table_array = [['radius','error','time for 41x41x41']]
+	table_array = [[lang.conv_vcrystal_radius,lang.conv_error,lang.conv_time_estimate]]
 	for radius in range(1,r_max):
 		row = [str(radius)]
 		sum_t = 0
@@ -1053,202 +1168,555 @@ def convergence_test():
 		for i in range(len(r_test)):
 			sum_err += error[radius][i]
 			sum_t += t[radius][i]
-			print radius,i,(str(B[radius][i]))
 		row.append(str(sum_err/np.float(len(r_test)))[:5]+' %')
-		row.append(ui.s_to_hms(sum_t*41*41*41/np.float(len(r_test)))) #time for 41x41x41 iterations
+		row.append(ui.s_to_hms(sum_t*lang.conv_n_points/np.float(len(r_test)))) #time for 1,000,000 iterations
 		table_array.append(row)
 	t_end = time.clock()
 	
 	return ui.menu([
 	['q','back to dipole menu',dipole,'']
 	],ui.table(table_array)+'Convergence test completed in '+ui.s_to_hms(t_end-t_begin))
-	
 
-def vcrystal_size():
+# dipole_vcrystal_size
+# --------------------------
+# A user input function on the dipole menu
+# ---
+# Specify the size of the virtual crystal to use in dipole field calculations by direct summation
+# 998 - allow user to specify lengths in units other than a
+# 998 - allow different vcrystal shapes?
+def dipole_vcrystal_size():
 	a = ui.inputscreen('Type radius of virtual crystal sphere (units of a):','int',0,eqmin=False)
 	if a is not False:
 		update_value('dipole','r_sphere',a)
 	return dipole
 
-def n_points():
+# dipole_points
+# --------------------------
+# A user input function on the dipole menu
+# ---
+# Obtain both the method of points generation (on a grid, or Monte Carlo), and how many points to use
+# 998 - also specify how many unit cells here? eg magnetic, crystal, other...
+def dipole_points():
 	dipole_data = load_current('dipole')
-	for axis in ['a','b','c']:
-		if dipole_data.has_key('n_'+axis):
-			a = ui.inputscreen('Number of points on the '+axis+'-axis (blank for '+str(dipole_data['n_'+axis])+'):','int',0,eqmin=False,notblank=False)
+	pointgen = ui.option([
+			['g','grid',False,''],
+			['m','Monte Carlo',False,'']
+			], 'Choose a method of point generation:')
+	update_value('dipole','pointgen',pointgen)
+	if pointgen == 'g':
+			for axis in ['a','b','c']:
+				if dipole_data.has_key('n_'+axis):
+					a = ui.inputscreen('Number of points on the '+axis+'-axis (blank for '+str(dipole_data['n_'+axis])+'):','int',0,eqmin=False,notblank=False)
+				else:
+					a = ui.inputscreen('Number of points on the '+axis+'-axis:','int',0,eqmin=False,notblank=True)
+				if a is not False:
+					update_value('dipole','n_'+axis,a)
+	elif pointgen == 'm':
+		if dipole_data.has_key('n_monte'):
+			a = ui.inputscreen('Number of points to evaluate (blank for '+str(dipole_data['n_monte'])+':','int',0,eqmin=False,notblank=False)
 		else:
-			a = ui.inputscreen('Number of points on the '+axis+'-axis:','int',0,eqmin=False,notblank=True)
+			a = ui.inputscreen('Number of points to evaluate:','int',0,eqmin=False,notblank=True)
 		if a is not False:
-			update_value('dipole','n_'+axis,a)
+			update_value('dipole','n_monte',a)
 	return dipole
+
+# generate_grid
+# --------------------------
+# Generates a 3D grid of equally-spaced-in-fractional-coordinates points in the unit cell.
+# ---
+# INPUT
+# a_cart = array of three three-component vectors: the primitive translation vectors in cartesian coordinates (m)
+# L = three-component array describing the volume of the grid to be generated, eg 1x1x1 implies crystallographic unit cell; other values could include magnetic unit cell or arbitrary choice
+# n = three-component array of number of points in the grid
+# fenceposts = Boolean: whether to include the edge at 1 as well as at zero. eg False => 0,0.25,0.5,0.75; True => 0,0.25,0.5,0.75,1
+# ---
+# OUTPUT
+# grid_frac = the grid in fractional coordinates
+# grid_cart = the grid in Cartesian real-space coordinates
+#
+# 999 redo this as a NumPy loop for speed
+def generate_grid(a_cart,L,n,fenceposts=False):
+	if fenceposts:
+		m = [n[0]+1,n[1]+1,n[2]+1]
+	else:
+		m = n
+	grid_frac = np.zeros((m[0]*m[1]*m[2],3),np.float)
+	grid_cart = np.zeros((m[0]*m[1]*m[2],3),np.float)
+	for i in range(m[0]):
+		r_frac_x = np.float(i)/np.float(n[0]) * L[0]
+		r_test_x = r_frac_x * a_cart[0]
+		for j in range(m[1]):
+			r_frac_y = np.float(j)/np.float(n[1]) * L[1]
+			r_test_y = r_frac_y * a_cart[1]
+			for k in range(m[2]):
+				r_frac_z = np.float(k)/np.float(n[2]) * L[2]
+				grid_frac[i+j*m[1]+k*m[2]*m[1]] = [r_frac_x,r_frac_y,r_frac_z]
+				grid_cart[i+j*m[1]+k*m[2]*m[1]] = r_test_x + r_test_y + r_frac_z * a_cart[2]
+				#print grid_frac[i+j*m[1]+k*m[2]*m[1]],grid_cart[i+j*m[1]+k*m[2]]
+	grid_frac = difast.reshape_array(grid_frac)
+	grid_cart = difast.reshape_array(grid_cart)
+	return grid_frac,grid_cart
+
+# generate_monte
+# --------------------------
+# Generates random positions in the unit cell.
+# ---
+# INPUT
+# a_cart = array of three three-component vectors: the primitive translation vectors in cartesian coordinates (m)
+# L = three-component array describing the volume of the over which the random points are to be generated, eg 1x1x1 implies crystallographic unit cell; other values could include magnetic unit cell or arbitrary choice
+# ---
+# OUTPUT
+# r_frac = the positions in fractional coordinates
+# r_cart = the positions in Cartesian real-space coordinates
+def generate_monte(a_cart,L,n):
+	#if you're asking to generate a RAM-crippling number of points, reduce it
+	if n > config.n_pos_at_a_time:
+		n = config.n_pos_at_a_time
+	#generate n_pos_at_a_time random positions...see config.py
+	r_frac = np.random.random((n,3)) #999 *L
+	#convert them to absolute coordinates
+	r_cart = np.dot(r_frac,a_cart)
+	r_frac = difast.reshape_array(r_frac)
+	r_cart = difast.reshape_array(r_cart)
+	return r_frac,r_cart
+
+# apply_constraints
+# --------------------------
+# Applies constraints to an array of positions and discards those which fall outside the allowed regions.
+# ---
+# INPUT
+# r_frac = (N,3) difast-shape array of fractional coordinates
+# r_cart = (N,3) difast-shape array of Cartesian coordinates (m)
+# constraints = Python list of atoms and minimum and maximum distances
+# ---
+# OUTPUT
+# r_frac = the positions in fractional coordinates
+# r_cart = the positions in Cartesian real-space coordinates
+def apply_constraints(r_frac,r_cart,r_constraints,constraints_min,constraints_max):
+	keep = np.ones(len(r_cart[0]),np.bool) #is it far enough away? Start all true...
+	keep_close = np.zeros(len(r_cart[0]),np.bool) #is it close enough? Start all false...
+	#  go through, eradicating points which don't satisfy the constraints
+	for i in range(len(r_constraints[0])):
+		r_rel = r_cart-np.reshape(r_constraints[:,i],(3,1)) #find how far the dipole field point is from all the atoms
+		#                                ^^ 998 why does this need reshaping to go from (3,) to (3,1)?
+		if constraints_min[i] is not False:
+			keep = np.bitwise_and(keep,(np.sum(r_rel*r_rel, 0)>constraints_min[i]**2)) #make sure you're not too close an atom
+		if constraints_max[i] is not False:
+			keep_close = np.bitwise_or(keep_close,(np.sum(r_rel*r_rel, 0)<constraints_max[i]**2)) #the 'not further than x from atom i' condition starts all false and is then bitwise_or because it doesn't matter which atom you're not more than x from
+	keep = np.bitwise_and(keep,keep_close)
+	#discard those dipole field points too close and far from to atoms, and return the abridged r_frac and r_cart
+	return np.compress(keep,r_frac,axis=1), np.compress(keep,r_cart,axis=1)
+
+# dipole_constraints_table
+# --------------------------
+# A table-generating function used within dipole_constraints
+# ---
+# OUTPUT
+# A table of existing constraints on muon site as a string; nothing if no constraints are set; an error if no length unit has been specified
+def dipole_constraints_table():
+	#load (and print out) any already-existent constraints
+	crystal_data = load_current('crystal')
+	dipole_data = load_current('dipole')
+	if crystal_data.has_key('length_unit'):
+		if crystal_data['length_unit'] == 'n':
+			length_unit = lang.nm
+		elif crystal_data['length_unit'] == 'm':
+			length_unit = lang.m
+		elif crystal_data['length_unit'] == 'a':
+			length_unit = lang.angstrom
+		
+		if dipole_data.has_key('constraints'):
+			constraints = dipole_data['constraints']
+			constraints_table_array = []
+			constraints_table_array.append(['#','element','d_min ('+length_unit+')','d_max ('+length_unit+')'])
+			i = 1
+			for constraint in constraints:
+				constraint_row = []
+				constraint_row.append(str(i))
+				constraint_row.append(constraint[0])
+				if constraint[1] is False:
+					constraint_row.append('0')
+				else:
+					constraint_row.append(str(constraint[1]))
+				if constraint[2] is False:
+					constraint_row.append(lang.infinity)
+				else:
+					constraint_row.append(str(constraint[2]))
+				constraints_table_array.append(constraint_row)
+				i += 1
+			return ui.table(constraints_table_array)
+		else:
+			return ''
+	else:
+		return lang.err_no_length_unit #filling in this is silly if there's no length unit set
+
+# dipole_constraints
+# --------------------------
+# A user input menu on the dipole menu
+# ---
+# Prints a table of current constraints on the muon site if there are any, and allows the user to add, edit or delete constraints
+# 998 - add something for specifying ions with a certain charge etc?
+# 998 - add fuzzier constraints, eg Gaussian edges etc?
+def dipole_constraints():
+	dipole_data = load_current('dipole')
+	#if there are constraints
+	if dipole_data.has_key('constraints') and len(dipole_data['constraints']) != 0:
+		return ui.menu([
+		['a','add constraint',dipole_constraint_add,''],
+		['d','delete constraint',dipole_constraint_delete,''],
+		['e','edit constraint',dipole_constraint_edit,''],
+		['v','visualise volume satisfying constraints',dipole_constraints_draw,''],
+		['f','calculate fractional volume satisfying constraints',dipole_constraints_volume,''],
+		['q','back to dipole menu',dipole,'']
+		],dipole_constraints_table())
+	#if none has been set yet
+	else:
+		return ui.menu([
+		['a','add constraint',dipole_constraint_add,''],
+		['q','back to dipole menu',dipole,'']
+		])
+
+# dipole_constraint_add
+# --------------------------
+# A user input function on the dipole constraints menu
+# ---
+# Gets a new constraint on the muon position by taking an element and specifying how far ones is allowed to be from that element
+def dipole_constraint_add():
+	newconstraint=[]
+	#998 make a way to get these all on one screen
+	newconstraint.append(ui.inputscreen('                     element:','string',notblank=True))
+	crystal_data = load_current('crystal')
+	if crystal_data.has_key('length_unit'):
+		length_unit, length_unit_name = get_length_unit(crystal_data['length_unit'])
+	else:
+		length_unit_name = lang.red+'length unit not defined'+lang.reset
+	newconstraint.append(ui.inputscreen('            d_min ('+length_unit_name+"):",'float',0,eqmin=True,notblank=True))
+	newconstraint.append(ui.inputscreen('            d_max ('+length_unit_name+", 'n' for no constraint):",'float_or_string',newconstraint[1],eqmin=False,notblank=True)) #can't be less than d_min, which is newconstraint[1]
+	#if these are set to no constraint, then set the actual values to Boolean false
+	if newconstraint[1] == 0:
+		newconstraint[1] = False
+	if newconstraint[2] == 'n':
+		newconstraint[2] = False
+	#load the old atoms
+	dipole_data = load_current('dipole')
+	if dipole_data.has_key('constraints'):
+		constraints = dipole_data['constraints']
+	else:
+		constraints = []
+	constraints.append(newconstraint)
+	update_value('dipole','constraints',constraints)
+	return dipole_constraints
+
+# dipole_constraint_delete
+# --------------------------
+# A user input function on the dipole constraints menu
+# ---
+# Deletes a constraint on the muon position
+def dipole_constraint_delete():
+	dipole_data = load_current('dipole')
+	constraints = dipole_data['constraints']
+	constraints_data = dipole_constraints_table()
+	if len(constraints) > 1:
+		query = 'Delete which constraint? (1-'+str(len(constraints))+', blank to cancel)'
+	else:
+		query =  'There is only one constraint. Enter 1 to confirm deletion, or leave blank to cancel:'
+	kill_me = ui.inputscreen(query,'int',1,len(constraints))
+	if kill_me is not False:
+		del constraints[kill_me-1]
+		update_value('dipole','constraints',constraints)
+	return dipole_constraints
+
+# dipole_constraint_edit
+# --------------------------
+# A user input function on the dipole constraints menu
+# ---
+# Edits a constraint on the muon position
+def dipole_constraint_edit():
+	dipole_data = load_current('dipole')
+	constraints = dipole_data['constraints']
+	constraints_data = dipole_constraints_table()
+	if len(constraints) > 1:
+		query = 'Edit which constraint? (1-'+str(len(constraints))+')'
+		edit_me = ui.inputscreen(query,'int',1,len(constraints),text=constraints_data) - 1 #arrays start at zero
+	else:
+		edit_me = 0
+	#make readable the pre-existing constraints
+	if constraints[edit_me][1] == False:
+		constraint_min = '0'
+	else:
+		constraint_min = str(constraints[edit_me][1])
+	if constraints[edit_me][2] == False:
+		constraint_max = lang.infinity
+	else:
+		constraint_max = str(constraints[edit_me][2])
+	constraint=[]
+	#998 make a way to get these all on one screen
+	constraint.append(ui.inputscreen('               element (blank for '+constraints[edit_me][0]+'):','string',notblank=False))
+	if constraint[0] is False:
+		constraint[0] = constraints[edit_me][0]
+	#get the length unit
+	crystal_data = load_current('crystal')
+	if crystal_data.has_key('length_unit'):
+		length_unit, length_unit_name = get_length_unit(crystal_data['length_unit'])
+	else:
+		length_unit_name = lang.red+'length unit not defined'+lang.reset
+	constraint.append(ui.inputscreen('         d_min (blank for '+constraint_min+' '+length_unit_name+"):",'float',0,eqmin=True,notblank=False))
+	constraint.append(ui.inputscreen('          d_max (blank for '+constraint_max+' '+length_unit_name+", 'n' for no constraint):",'float_or_string',constraint[1],eqmin=False,notblank=False)) #can't be less than d_min, which is constraint[1]
+	#if these are set to no constraint, then set the actual values to Boolean false
+	if constraint[1] is 0:
+		constraint[1] = False
+	elif constraint[1] is False:
+		constraint[1] = constraints[edit_me][1]
+	if constraint[2] == 'n':
+		constraint[2] = False
+	elif constraint[2] is False:
+		constraint[2] = constraints[edit_me][2]
+	#update the values
+	constraints[edit_me] = constraint
+	update_value('dipole','constraints',constraints)
+	return dipole_constraints
+
+def dipole_constraints_draw():
+	ui.message(lang.drawing_crystal_unit_cell)
+	#load visual window stuff
+	global visual_window
+	global visual_window_contents
+	crystal_data = load_current('crystal')
+	dipole_data = load_current('dipole')
+	draw_data = load_current('draw')
+	draw_crystal_unit_cell()
+	#draw constrained positions
+	ui.message(lang.drawing_constrained_positions)
+	length_unit, length_unit_name = get_length_unit(crystal_data['length_unit'])
+	a,alpha,a_cart,r_atoms,q_atoms,m_atoms,k_atoms,name_atoms = stored_unit_cell()
+	L = [1,1,1]
+	r_atoms = difn.zero_if_close(r_atoms)
+	r_unit,q_unit,mu_unit,names_unit = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], L)
+	#then delete all atoms outside the relevant unit cell(s)
+	r_unit,q_unit,mu_unit,names_unit = difn.make_crystal_trim_para(r_unit,q_unit,mu_unit,names_unit,a_cart,L)
+	r_frac,r_cart = generate_grid(a_cart,L,[30,30,30],fenceposts=True) # including edges far from origin 
+	#r_frac,r_cart = generate_monte(a_cart,L,1000)
+	constraint_r,constraint_min,constraint_max = get_constraints(r_unit,names_unit,dipole_data['constraints'],length_unit)
+	r_frac,r_cart = apply_constraints(r_frac,r_cart,constraint_r,constraint_min,constraint_max)
+	#turn it back from difast format, slightly hackily... 998 can we avoid this?
+	r_draw = []
+	for i in range(len(r_cart[0])):
+		r_draw.append([r_cart[0][i],r_cart[1][i],r_cart[2][i]])
+	#draw this stuff
+	scale = draw_default_scale()
+	visual_window_contents['constrained_positions'] = didraw.points(r_draw,scale)
+	return dipole_constraints
+
+def dipole_constraints_volume():
+	ui.message(lang.please_wait)
+	crystal_data = load_current('crystal')
+	dipole_data = load_current('dipole')
+	draw_data = load_current('draw')
+	length_unit, length_unit_name = get_length_unit(crystal_data['length_unit'])
+	a,alpha,a_cart,r_atoms,q_atoms,m_atoms,k_atoms,name_atoms = stored_unit_cell()
+	L = [1,1,1]
+	r_atoms = difn.zero_if_close(r_atoms)
+	r_unit,q_unit,mu_unit,names_unit = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], L)
+	#then delete all atoms outside the relevant unit cell(s)
+	r_unit,q_unit,mu_unit,names_unit = difn.make_crystal_trim_para(r_unit,q_unit,mu_unit,names_unit,a_cart,L)
+	r_frac,r_cart = generate_grid(a_cart,L,[100,100,100])
+	n_full_vol = len(r_frac[0])
+	#r_frac,r_cart = generate_monte(a_cart,L,1000)
+	constraint_r,constraint_min,constraint_max = get_constraints(r_unit,names_unit,dipole_data['constraints'],length_unit)
+	r_frac,r_cart = apply_constraints(r_frac,r_cart,constraint_r,constraint_min,constraint_max)
+	n_constraint_vol = len(r_frac[0])
+	if n_constraint_vol != 0:
+		final_message = 'Points satisfying the constraints occupy about '+str(np.float(n_constraint_vol)/n_full_vol*100)+'% of the unit cell. To obtain approximately x points in your final histogram, generate a grid containing '+str(np.round(np.float(n_full_vol)/n_constraint_vol,3))+'x points [('+str(np.int(np.ceil((np.float(n_full_vol)/n_constraint_vol)**(1./3.))))+'x)^3 in the cubic case].'
+	else:
+		final_message = 'Your constraints are too harsh: no points satisfy them!'
+	return ui.menu([
+	['q','back to dipole menu',dipole_constraints,'']
+	],final_message)
+
+def constraints_readable(constraints,length_unit_name):
+	constraints_readable = ''
+	for j in range(len(constraints)):
+		#if there's a min and a max, write min < d < max,
+		if constraints[j][1] is not False and constraints[j][2] is not False:
+			constraints_readable += str(constraints[j][1])+' < '+'d_'+constraints[j][0] + ' < ' + str(constraints[j][2]) + '; '
+		#if there's a max, write d < max,
+		elif constraints[j][2] is not False:
+			constraints_readable += 'd_'+constraints[j][0] + ' < ' + str(constraints[j][2]) + '; '
+		#if there's a min, write d > min,
+		else:
+			constraints_readable += 'd_'+constraints[j][0] + ' > ' + str(constraints[j][1]) + '; '
+	return constraints_readable[:-2]+' '+length_unit_name #subtract final comma, and add length unit name
+
+def get_constraints(r_unit,names_unit,constraints,length_unit):
+	constraint_r = []
+	constraint_min = []
+	constraint_max = []
+	#is there an 'all atoms' constraint?
+	constraint_all = False
+	for j in range(len(constraints)):
+		if constraints[j][0] == 'all':
+			constraint_all = True
+			if constraints[j][1] is not False:
+				constraint_all_min = constraints[j][1]*length_unit
+			else:
+				constraint_all_min = False
+			if constraints[j][2] is not False:
+				constraint_all_max = constraints[j][2]*length_unit
+			else:
+				constraint_all_max = False
+			break
+	#go through each atom and note the constraints associated with it
+	for i in range(len(r_unit)):
+		element_found = False
+		#loop though to see if the element has a constraint defined
+		for j in range(len(constraints)):
+			if names_unit[i] == constraints[j][0]:
+				constraint_r.append(r_unit[i])
+				constraint_min.append(constraints[j][1]*length_unit)
+				constraint_max.append(constraints[j][2]*length_unit)
+				element_found = True
+				#print names_unit[i],constraint_r[-1],constraint_min[-1],constraint_max[-1]
+				break #escape the loop if the element has a constraint defined
+		if not(element_found): #if the atom's specific element wasn't found
+			if constraint_all: #and if there is a catch-all constraint
+				constraint_r.append(r_unit[i])
+				constraint_min.append(constraint_all_min)
+				constraint_max.append(constraint_all_max)
+				#print names_unit[i],constraint_r[-1],constraint_min[-1],constraint_max[-1]
+	#reshape the array of constrained positions for fast execution
+	constraint_r = difast.reshape_array(constraint_r)
+	return constraint_r,constraint_min,constraint_max
 
 def calculate_dipole():
 	dipole_data = load_current('dipole')
-	#check there's a radius and number of points set
-	if dipole_data.has_key('r_sphere') and dipole_data.has_key('n_a') and dipole_data.has_key('n_b') and dipole_data.has_key('n_c'):
+	crystal_data = load_current('crystal')
+	# is it either set to generate points on a grid, and are the grid dimensions set, or is it set to Monte Carlo with a specified n?
+	if dipole_data.has_key('r_sphere') and crystal_data.has_key('length_unit') and ((dipole_data.has_key('pointgen') and dipole_data['pointgen'] == 'g' and dipole_data.has_key('n_a') and dipole_data.has_key('n_b') and dipole_data.has_key('n_c')) or (dipole_data.has_key('pointgen') and dipole_data['pointgen'] == 'm' and dipole_data.has_key('n_monte'))):
+		#if so, calculate!
 		#start the v_meta metadata dictionary
-		v_meta = {'title':ui.inputscreen('Please enter a title for your virtual crystal file:','str',notblank=True)}
+		v_meta = {'title':ui.inputscreen('Please enter a title for your output files:','str',notblank=True)}
 		v_filename = ui.inputscreen('Please enter a filename for your output files:','str',notblank=True)
 		update_value('dipole', 'current_filename', v_filename)
-		radius = dipole_data['r_sphere']
-		n = [dipole_data['n_a'],dipole_data['n_b'],dipole_data['n_c']]
-		a,alpha,a_cart,r_atoms,q_atoms,m_atoms,k_atoms,name_atoms = stored_unit_cell()
-		#make the vcrystal
-		print 'Creating virtual crystal (r = '+str(radius)+'a)...'
-		v_meta['R'] = str(radius)+'a'
-		v_meta['shape'] = 'sphere'
-		L,r,q,mu,name,r_whatisthis = difn.make_crystal(radius,a,alpha,r_atoms,m_atoms,k_atoms, q_atoms, name_atoms,type='magnetic') #999whatisthis
-		#save the vcrystal
-		print 'Saving virtual crystal (output/'+v_filename+'-vcrystal.tsv)...'
-		attr = []
-		for i in range(len(r)):
-			attr.append([r[i][0],r[i][1],r[i][2],name[i],mu[i][0],mu[i][1],mu[i][2],q[i]])
-		csc_properties = ['r_x','r_y','r_z','element','mu_x','mu_y','mu_z','q']
-		csc.write(v_meta,csc_properties,attr,'output/'+v_filename+'-vcrystal.tsv')
-		#kill the attributes variable as it may be quite big, and is no longer needed
-		del(attr)
-		#get the magnetic unit cell size
-		L = difn.mag_unit_cell_size(k_atoms)
-		#create a file ready to receive the output
-		dipole_field_filename =  'output/'+v_filename+'-dipole-field.tsv'
-		csc_properties = ['rho_x','rho_y','rho_z','r_x','r_y','r_z','B_x','B_y','B_z','omega']
-		d_meta = {'title': v_meta['title'], 'n_a': n[0], 'n_b': n[1], 'n_c': n[2], 'vcrystal': v_filename+'-vcrystal.tsv'}
-		file = csc.begin(d_meta,csc_properties,dipole_field_filename)
-		#loop over points in that number of unit cells
-		print 'Calculating dipole fields...'
-		r_fast = difast.reshape_array(r)
-		mu_fast = difast.reshape_array(mu)
-		t_start = time.clock() 
-		for i in range(n[0]):
-			r_frac_x = np.float(i)/np.float(n[0]) * L[0]
-			r_test_x = r_frac_x * a_cart[0]
-			for j in range(n[1]):
-				r_frac_y = np.float(j)/np.float(n[1]) * L[1]
-				r_test_y = r_frac_y * a_cart[1]
-				for k in range(n[2]):
-					r_frac_z = np.float(k)/np.float(n[2]) * L[2]
-					#print r_frac_x,r_frac_y,r_frac_z
-					r_test = r_test_x +r_test_y + r_frac_z * a_cart[2] #don't calculate r_test_z to maximise efficiency...
-					#B = difn.calculate_dipole(r_test, r, mu) #the old function
-					r_test_fast = difast.reshape_vector(r_test)
-					B = difast.calculate_dipole(r_test_fast, r_fast, mu_fast)
-					omega = difn.gyro(B)
-					#only write to the file if the result is not invalid, caused by being on top of a moment
-					if not np.isnan(omega):
-						csc.append([r_frac_x,r_frac_y,r_frac_z,r_test[0],r_test[1],r_test[2],B[0],B[1],B[2],omega],file)
-			frac_done = np.float(i+1)/(n[0]+1)
-			t_elapsed = (time.clock()-t_start)
-			t_remain = (1-frac_done)*t_elapsed/frac_done
-			print str(round(frac_done*100,1))+'% done in '+ui.s_to_hms(t_elapsed)+'...approximately '+ui.s_to_hms(t_remain)+' remaining'
-			final_message = 'Calculation completed in '+ui.s_to_hms(t_elapsed)
-	else:
-		final_message = 'Please ensure you have set a vcrystal radius and a number of points.'
-	return ui.menu([
-	['q','back to dipole menu',dipole,'']
-	],final_message)
-
-def calculate_dipole_near_muonophile():
-	close_min = 1.0e-10**2 #angstroms, for testing
-	bond_min = 1.0e-10**2 #angstroms, for testing
-	bond_max = 1.2e-10**2 #angstroms, for testing
-	bond_element = 'C'
-	dipole_data = load_current('dipole')
-	if dipole_data.has_key('r_sphere') and dipole_data.has_key('n_a') and dipole_data.has_key('n_b') and dipole_data.has_key('n_c'):
-		#start the v_meta metadata dictionary
-		v_meta = {'title':ui.inputscreen('Please enter a title for your virtual crystal file:','str',notblank=True)}
-		v_filename = ui.inputscreen('Please enter a filename for your output files:','str',notblank=True)
-		update_value('dipole', 'current_filename', v_filename)
-
+		#get crystal structure
 		print 'Loading crystal structure...'
-		#get crystal structure and identify muonophiles
-		# import the crystal structure
 		a,alpha,a_cart,r_atoms,q_atoms,m_atoms,k_atoms,name_atoms = stored_unit_cell()
 		L = difn.mag_unit_cell_size(k_atoms)
 		r_atoms = difn.zero_if_close(r_atoms)
 		r_unit,q_unit,mu_unit,names_unit = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], L)
-		#then delete all atoms outside the magnetic unit cell
+		#then delete all atoms outside the relevant unit cell(s)
 		r_unit,q_unit,mu_unit,names_unit = difn.make_crystal_trim_para(r_unit,q_unit,mu_unit,names_unit,a_cart,L)
-		r_muonophile = []
-		r_other = []
-		for i in range(len(r_unit)):
-			if names_unit[i] == bond_element:
-				r_muonophile.append(r_unit[i])
-			else:
-				r_other.append(r_unit[i])
-		r_unit = difast.reshape_array(r_unit)
-		r_muonophile = difast.reshape_array(r_muonophile)
-		r_other = difast.reshape_array(r_other)
-
+		constraints = False
+		#if there are constraints set...
+		if dipole_data.has_key('constraints') and len(dipole_data['constraints']) > 0:
+			#load constraints
+			constraints = dipole_data['constraints']
+			#load length unit
+			length_unit,length_unit_name = get_length_unit(crystal_data['length_unit'])
+			#now identify atoms and associated constraints
+			constraint_r,constraint_min,constraint_max = get_constraints(r_unit,names_unit,constraints,length_unit)
+			v_meta['constraints'] = constraints_readable(constraints,length_unit_name)
+		# ===make the vcrystal=== #
 		radius = dipole_data['r_sphere']
-		n = [dipole_data['n_a'],dipole_data['n_b'],dipole_data['n_c']]
-		#make the vcrystal
-		print 'Creating virtual crystal (r = '+str(radius)+'a)...'
+		ui.message('Creating virtual crystal (r = '+str(radius)+'a)...')
 		v_meta['R'] = str(radius)+'a'
 		v_meta['shape'] = 'sphere'
-		L,r,q,mu,name,r_whatisthis = difn.make_crystal(radius,a,alpha,r_atoms,m_atoms,k_atoms, q_atoms, name_atoms,type='magnetic') #999whatisthis
+		L,r,q,mu,name,r_whatisthis = difn.make_crystal(radius,a,alpha,r_atoms,m_atoms,k_atoms, q_atoms, name_atoms, type='magnetic') #999whatisthis
 		#save the vcrystal
-		print 'Saving virtual crystal (output/'+v_filename+'-vcrystal.tsv)...'
+		ui.message('Saving virtual crystal ('+config.output_dir+'/'+v_filename+'-vcrystal.tsv)...')
 		attr = []
 		for i in range(len(r)):
 			attr.append([r[i][0],r[i][1],r[i][2],name[i],mu[i][0],mu[i][1],mu[i][2],q[i]])
 		csc_properties = ['r_x','r_y','r_z','element','mu_x','mu_y','mu_z','q']
-		csc.write(v_meta,csc_properties,attr,'output/'+v_filename+'-vcrystal.tsv')
+		csc.write(v_meta,csc_properties,attr,config.output_dir+'/'+v_filename+'-vcrystal.tsv')
 		#kill the attributes variable as it may be quite big, and is no longer needed
 		del(attr)
+		
+		ui.message('Calculating dipole fields...')
 		#get the magnetic unit cell size
 		L = difn.mag_unit_cell_size(k_atoms)
 		#create a file ready to receive the output
-		dipole_field_filename =  'output/'+v_filename+'-dipole-field.tsv'
-		csc_properties = ['rho_x','rho_y','rho_z','r_x','r_y','r_z','B_x','B_y','B_z','omega']
-		d_meta = {'title': v_meta['title'], 'n_a': n[0], 'n_b': n[1], 'n_c': n[2], 'vcrystal': v_filename+'-vcrystal.tsv'}
-		file = csc.begin(d_meta,csc_properties,dipole_field_filename)
-		#loop over points in that number of unit cells
-		print 'Calculating dipole fields...'
+		dipole_field_filename =  config.output_dir+'/'+v_filename+'-dipole-field.tsv'
 		r_fast = difast.reshape_array(r)
 		mu_fast = difast.reshape_array(mu)
-		
-		for i in range(10):
-			print 'Generating positions...('+str(i)+'/1)'
-			#generate many random positions
-			r_frac = np.random.random((1000000,3)) #999 *L somehow!!
-			#   10,000,000 seemed to result in RAM issues--near-crashing pagefile usage, and, if a second calculation
-			#   was attempted with the same instance of MmCalc, the program would crash with a MemoryError
-			#   The fewer times this is done, the faster since this bit is a highly-optimised NumPy loop. Thus,
-			#   1,000,000 is the current compromise, and is looped over.
-			#convert them to absolute coordinates
-			r_dip = np.dot(r_frac,a_cart)
-			r_dip = difast.reshape_array(r_dip)
-			r_frac = difast.reshape_array(r_frac)
-			#then throw away the useles ones
-			keep = np.ones(len(r_dip[0]),np.bool) #will the position survive? Start all true...
-			#print np.shape(r_dip),np.shape(r_unit),np.shape(r_unit[:,0])
-			for i in range(len(r_other[0])):
-				r_rel = r_dip-np.reshape(r_other[:,i],(3,1)) #find how far the dipole field point is from all the atoms 998 why does this need reshaping to go from (3,) to (3,1)?
-				keep = np.bitwise_and(keep,(np.sum(r_rel*r_rel, 0)>close_min)) #if any of them is closer than near, set this to false to discard. Using bitwise_and means that only continual 'true's will result in an array element not being discarded in a moment
-			keep_close = np.zeros(len(r_dip[0]),np.bool) #start a new array to check if positions are close enough to muonophiles
-			for i in range(len(r_muonophile[0])):
-				r_rel = r_dip-np.reshape(r_muonophile[:,i],(3,1))
-				keep = np.bitwise_and(keep,(np.sum(r_rel*r_rel, 0)>bond_min)) #make sure you're not too close to a muonophile either
-				keep_close = np.bitwise_or(keep_close,(np.sum(r_rel*r_rel, 0)<bond_max)) #the 'not further than x from a muonophile' condition starts all false and is then bitwise_or because it doesn't matter which muonophile you're not more than x from
-			keep = np.bitwise_and(keep,keep_close)
-			r_dip = np.compress(keep,r_dip,axis=1) #discard those dipole field points too close to atoms
-			r_frac = np.compress(keep,r_frac,axis=1)
-			n = np.sum(keep)*100 #999 make this work!!
-			t_start = time.clock()
-			for i in range(len(r_dip[0])):
+
+		runningtotal = 0 #this stores the number of valid positions calculated so far
+		t_start = time.clock()
+		t_gen = 0
+		t_dip = 0
+		#if we're generating points on a grid
+		if dipole_data['pointgen'] == 'g':
+			n_grid = [dipole_data['n_a'],dipole_data['n_b'],dipole_data['n_c']]
+			csc_properties = ['rho_x','rho_y','rho_z','r_x','r_y','r_z','B_x','B_y','B_z','omega']
+			d_meta = {'title': v_meta['title'], 'pointgen': 'grid', 'n_a': n_grid[0], 'n_b': n_grid[1], 'n_c': n_grid[2], 'vcrystal': v_filename+'-vcrystal.tsv'}
+			if constraints is not False:
+				d_meta['constraints'] = v_meta['constraints']
+			file = csc.begin(d_meta,csc_properties,dipole_field_filename)
+			t_gen_start = time.clock()
+			#generate n_pos_at_a_time random positions...see config.py
+			r_frac,r_dip = generate_grid(a_cart,L,n_grid)
+			#throw some away, if necessary
+			if constraints is not False:
+				r_frac,r_dip = apply_constraints(r_frac,r_dip,constraint_r,constraint_min,constraint_max)
+			points_to_try = len(r_dip[0])
+			t_gen += time.clock() - t_gen_start
+			t_dip_start = time.clock()
+			for i in range(points_to_try):
 				B = difast.calculate_dipole(np.reshape(r_dip[:,i],(3,1)), r_fast, mu_fast)
 				omega = difn.gyro(B)
 				#only write to the file if the result is not invalid, caused by being on top of a moment
 				if not np.isnan(omega):
 					csc.append([r_frac[0,i],r_frac[1,i],r_frac[2,i],r_dip[0,i],r_dip[1,i],r_dip[2,i],B[0],B[1],B[2],omega],file)
-				if i%100000 == 0:
-					frac_done = np.float(i+1)/(n)
-					t_elapsed = (time.clock()-t_start)
-					t_remain = (1-frac_done)*t_elapsed/frac_done
+				if (i+1)%10000 == 0:
+					#every so often, print out how far through we are
+					frac_done = np.float(i)/points_to_try
+					t_elapsed = time.clock()-t_start
+					t_remain  = (1-frac_done)*t_elapsed/frac_done
 					print str(round(frac_done*100,1))+'% done in '+ui.s_to_hms(t_elapsed)+'...approximately '+ui.s_to_hms(t_remain)+' remaining'
+			t_dip += time.clock() - t_dip_start
+			t_elapsed = time.clock()-t_start
+			csc.close(file)
+			final_message = 'Calculation completed in '+ui.s_to_hms(t_elapsed)
+		#otherwise, we must be generating points Monte Carlo
+		else:
+			csc_properties = ['omega'] #if it's MC, don't record positions or field directions, just frequencies
+			n_positions = dipole_data['n_monte']
+			d_meta = {'title': v_meta['title'], 'pointgen': 'Monte Carlo', 'n': n_positions, 'vcrystal': v_filename+'-vcrystal.tsv'}
+			if constraints is not False:
+				d_meta['constraints'] = v_meta['constraints']
+			file = csc.begin(d_meta,csc_properties,dipole_field_filename)
+			while runningtotal < n_positions:
+				t_gen_start = time.clock()
+				#generate n_pos_at_a_time random positions...see config.py
+				r_frac,r_dip = generate_monte(a_cart,L,config.n_pos_at_a_time)
+				#throw some away, if necessary
+				if constraints is not False:
+					r_frac,r_dip = apply_constraints(r_frac,r_dip,constraint_r,constraint_min,constraint_max)
+				runningtotal += len(r_dip[0])
+				if runningtotal < n_positions: #if we've not made it to the number of positions yet
+					points_to_try = len(r_dip[0]) #just do them all
+				else:
+					points_to_try = len(r_dip[0]) - (runningtotal - n_positions) #if not, 
+				t_gen += time.clock() - t_gen_start
+				t_dip_start = time.clock()
+				for i in range(points_to_try):
+					B = difast.calculate_dipole(np.reshape(r_dip[:,i],(3,1)), r_fast, mu_fast)
+					omega = difn.gyro(B)
+					#only write to the file if the result is not invalid, caused by being on top of a moment
+					if not np.isnan(omega):
+						csc.append([omega],file)
+				t_dip += time.clock() - t_dip_start
+				#every recalculation, print out how far through we are
+				frac_done = np.float(runningtotal)/n_positions
+				t_elapsed = (time.clock()-t_start)
+				t_remain  = (1-frac_done)*t_elapsed/frac_done
+				print str(round(frac_done*100,1))+'% done in '+ui.s_to_hms(t_elapsed)+'...approximately '+ui.s_to_hms(t_remain)+' remaining'
 		csc.close(file)
 		final_message = 'Calculation completed in '+ui.s_to_hms(t_elapsed)
+		if config.verbose:
+			#verbose output also displays the proportion of time spent generating the random positions versus calculating dipole fields
+			final_message += ' ('+ui.s_to_hms(t_gen)+' ['+str(round(t_gen/t_elapsed*100,1))+'%] spent generating positions, '+ui.s_to_hms(t_dip)+' ['+str(round(t_dip/t_elapsed*100,1))+'%] spent calculating dipole fields)'
 	else:
-		final_message = 'Please ensure you have set a vcrystal radius and a number of points.'
+		final_message = 'Before calculating dipole fields, you need to set a vcrystal radius, whether to generate points on a grid or Monte Carlo and a number of points to sample, and a length unit in the crystal menu to apply any muon site constraints. Please ensure all of those are properly set and try again.'
 	return ui.menu([
 	['q','back to dipole menu',dipole,'']
 	],final_message)
@@ -1297,7 +1765,7 @@ def draw_dipole():
 		default_filename = dipole_data['current_filename']
 	else:
 		default_filename = ''
-	dipole_filename,title,values = get_csc('output','-dipole-field.tsv',default_filename,'of your dipole field file')
+	dipole_filename,title,values = get_csc(config.output_dir,'-dipole-field.tsv',default_filename,'of your dipole field file')
 	update_value('dipole', 'current_filename', dipole_filename)
 	if draw_data.has_key('omega_minmax'):
 		omega_minmax_to_draw = ui.inputscreen('Please enter a comma-separated list of omega_min,omega_max,min,max,min,max… (MHz, blank for \''+omega_minmax_to_string(draw_data['omega_minmax'])+' MHz\'):','floatlist',notblank=False,validate=omega_minmax_str_explode)
@@ -1371,10 +1839,6 @@ def histo_freq():
 	]
 	if dipole_data.has_key('current_filename') and dipole_data.has_key('histo_min') and dipole_data.has_key('histo_max') and dipole_data.has_key('histo_bins'):
 		menuoptions.append(['h','save histogram',histo_save,''])
-		menuoptions.append(['l','save list of frequencies',histo_save_raw,''])
-		menuoptions.append(['n','save list of frequencies with positions too near to atoms excluded',histo_save_raw_near,''])
-		menuoptions.append(['o','save list of frequencies with positions an angstrom from O',histo_save_raw_near_muonophile,''])
-		menuoptions.append(['r','write R script for kernel density estimation on a list of frequencies',histo_save_r,''])
 	menuoptions.append(['q','back to dipole menu',dipole,''])
 	return ui.menu(menuoptions,ui.heading('Frequency histogram menu'))
 
@@ -1384,7 +1848,7 @@ def histo_filename():
 		default_filename = dipole_data['current_filename']
 	else:
 		default_filename=''
-	directory = 'output'
+	directory = config.output_dir
 	suffix = '-dipole-field.tsv'
 	filename = ui.get_filename(directory,suffix,default_filename,file_description='of your dipole field file')
 	update_value('dipole','current_filename',filename)
@@ -1403,7 +1867,7 @@ def histo_binning():
 	if dipole_data.has_key('histo_max') and dipole_data['histo_max'] > min:
 		max = ui.inputscreen('Maximum frequency for histogram (MHz) (blank for '+str(dipole_data['histo_max'])+'):','float',min,eqmin=False,notblank=False)
 	else:
-		max = ui.inputscreen('Minimum frequency for histogram (MHz):','float',min,eqmin=False,notblank=True)
+		max = ui.inputscreen('Maximum frequency for histogram (MHz):','float',min,eqmin=False,notblank=True)
 	if max is not False:
 		update_value('dipole','histo_max',max)
 	#get the number of bins
@@ -1419,7 +1883,7 @@ def histo_save():
 	print 'Initialising...'
 	dipole_data = load_current('dipole')
 	dipole_filename = dipole_data['current_filename']+'-dipole-field.tsv'
-	meta,properties,f = csc.begin_read('output/'+dipole_filename)
+	meta,properties,f = csc.begin_read(config.output_dir+'/'+dipole_filename)
 	min = dipole_data['histo_min']*1e6
 	max = dipole_data['histo_max']*1e6 #x1,000,000 for MHz --> Hz
 	bins = dipole_data['histo_bins']
@@ -1449,7 +1913,7 @@ def histo_save():
 	meta_out['histo_bins'] = dipole_data['histo_bins']
 	meta_out['histo_total'] = total #total number of field points taken
 	properties_out = ['f','pdf','n']
-	filename = 'output/'+dipole_data['current_filename'] + '-frequency-histogram.tsv'
+	filename = config.output_dir+'/'+dipole_data['current_filename'] + '-frequency-histogram.tsv'
 	output = csc.begin(meta_out,properties_out,filename)
 	#work out the prefactor to turn number of counts into a probability density
 	n2p = 1/(binwidth*total) #ie divide by bin width and total number
@@ -1458,226 +1922,6 @@ def histo_save():
 		csc.append([bin_centre,n2p*histo[i],histo[i]],output)
 	csc.close(output)
 	return histo_freq
-
-#this is the old version of this function, which opened the entire CSC file at once. This was predictably slow and MemoryError-prone with large files.
-#~ def histo_save():
-	#~ print 'Writing file...',
-	#~ dipole_data = load_current('dipole')
-	#~ dipole_filename,title,values = get_csc('output','-dipole-field.tsv',dipole_data['current_filename'],'of your dipole field file')
-	#~ r,B,omega = csc_to_dipole_field(values)
-	#~ histo,bin_edges = np.histogram(omega, bins=dipole_data['histo_bins'], range=(dipole_data['histo_min']*1e6,dipole_data['histo_max']*1e6)) #x1,000,000 for MHz > Hz
-	#~ print len(histo),len(bin_edges)
-	#~ attr = []
-	#~ #work out the prefactor to turn number of counts into a probability density
-	#~ n2p = 1/((bin_edges[1]-bin_edges[0])*len(r)) #ie divide by bin width and total number
-	#~ #make an array of bin middles and probability densities
-	#~ if len(histo)==len(bin_edges): #Ubuntu (so I guess old NumPy) seems to spit out the bin middles by default!
-		#~ for i in range(len(histo)): #so do it the easy way if the arrays are the same size
-			#~ attr.append([bin_edges[i], n2p*histo[i]])
-	#~ else:
-		#~ for i in range(len(histo)): #but average the edges of the bins if not
-			#~ attr.append([(bin_edges[i]+bin_edges[i+1])/2., n2p*histo[i]])
-	#~ meta = {}
-	#~ meta['title'] = title
-	#~ meta['dipole_filename'] = dipole_filename
-	#~ meta['histo_min'] = dipole_data['histo_min']
-	#~ meta['histo_max'] = dipole_data['histo_max']
-	#~ meta['histo_bins'] = dipole_data['histo_bins']
-	#~ meta['histo_total'] = len(r) #total number of field points taken
-	#~ properties = ['f','n']
-	#~ filename = 'output/'+dipole_data['current_filename'] + '-frequency-histogram.tsv'
-	#~ if csc.write(meta,properties,attr,filename):
-		#~ print 'success!'
-	#~ else:
-		#~ print 'failure! For some reason?! Try again?' #this won't display for long enough to be useful 998
-	#~ return histo_freq
-
-def histo_save_raw():
-	print 'Writing file...',
-	dipole_data = load_current('dipole')
-	dipole_filename,title,values = get_csc('output','-dipole-field.tsv',dipole_data['current_filename'],'of your dipole field file')
-	r,B,omega = csc_to_dipole_field(values)
-	min = dipole_data['histo_min']*1e6
-	max = dipole_data['histo_max']*1e6 #x1,000,000 for MHz --> Hz
-	omega_to_export = []
-	for i in range(len(omega)):
-		if omega[i] > min and omega[i] < max:
-			omega_to_export.append([omega[i]])
-	meta = {}
-	meta['title'] = title
-	meta['dipole_filename'] = dipole_filename
-	meta['desc'] = 'Just the frequencies from '+dipole_filename+' for further processing'
-	properties = ['#f'] #slightly hackily calls this #f because then R won't fall over when it reads it
-	filename = 'output/'+dipole_data['current_filename'] + '-frequencies-raw.tsv'
-	if csc.write(meta,properties,omega_to_export,filename):
-		print 'success!'
-	else:
-		print 'failure! For some reason?! Try again?' #this won't display for long enough to be useful 998
-	return histo_freq
-	
-def histo_save_r():
-	print 'Writing file...',
-	dipole_data = load_current('dipole')
-	filename = 'output/'+dipole_data['current_filename'] + '-frequencies-kernel.r'
-	f = open(filename,'w')
-	f.write('''omega = scan("'''+dipole_data['current_filename'] + '-frequencies-raw.tsv'+'''", what=numeric(0), comment.char = "#")
-d <- density(omega)
-x <- data.frame(d[1],d[2])
-write.table(x,sep = "\\t",file = "'''+dipole_data['current_filename'] + '-frequencies-kde.tsv'+'")')
-	f.close()
-	return histo_freq
-
-def histo_save_raw_near():
-	neardists = np.array([0,0.1,0.2,0.5,0.8,1.,1.1,1.2,1.3,1.4,1.5,2.])*1e-10 #angstroms, for testing
-	dipole_data = load_current('dipole')
-	print 'Reading dipole field file...',
-	meta,properties,f = csc.begin_read('output/'+dipole_data['current_filename']+'-dipole-field.tsv')
-	min = dipole_data['histo_min']*1e6
-	max = dipole_data['histo_max']*1e6 #x1,000,000 for MHz --> Hz
-	#then import the crystal structure
-	a,alpha,a_cart,r_atoms,q_atoms,m_atoms,k_atoms,name_atoms = stored_unit_cell()
-	L = difn.mag_unit_cell_size(k_atoms)
-	r_atoms = difn.zero_if_close(r_atoms)
-	r_unit,q_unit,mu_unit,names_unit = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], L)
-	#then delete all atoms outside the magnetic unit cell
-	r_unit,q_unit,mu_unit,names_unit = difn.make_crystal_trim_para(r_unit,q_unit,mu_unit,names_unit,a_cart,L)
-	r_unit = difast.reshape_array(r_unit)
-	not_eof = True
-	#open the files to write to:
-	outputs = []
-	meta_out = {}
-	meta_out['title'] = meta['title']
-	meta_out['dipole_filename'] = 'output/'+dipole_data['current_filename']+'-dipole-field.tsv'
-	properties_out = ['#f'] #slightly hackily calls this #f because then R won't fall over when it reads it
-	for i in range(len(neardists)):
-		meta['desc'] = 'Frequencies from '+meta_out['dipole_filename']+' with positions closer than '+str(neardists[i])+' m to an atom removed'
-		outputs.append(csc.begin(meta_out,properties_out,'output/'+dipole_data['current_filename']+'-frequencies-raw-near-removed-'+str(neardists[i])+'.tsv'))
-	j = 0
-	while not_eof:
-		j += 1
-		if j%1000 == 0:
-			print 'line '+str(j)+'...',
-		values,error = csc.readline(f,properties)
-		if error == 'EOF':
-			not_eof = False
-		elif error == None:
-			r_dip = difast.reshape_vector(values['r'])
-			r_rel = r_unit-r_dip
-			#include = np.ones(len(neardists),np.bool) #is the distance relative to an atom far enough? Start all true...
-			for i in range(len(neardists)):
-				if (np.sum(r_rel*r_rel, 0)>neardists[i]**2).all(): #only keep it if they're all greater!
-					csc.append([values['omega']],outputs[i])
-	csc.close(f)
-	for i in range(len(neardists)):
-		csc.close(outputs[i])
-	return histo_freq
-
-def histo_save_raw_near_muonophile():
-	bond_min = 1.1e-10**2 #angstroms, for testing
-	bond_max = 1.4e-10**2 #angstroms, for testing
-	bond_element = 'F'
-	dipole_data = load_current('dipole')
-	print 'Reading dipole field file...',
-	meta,properties,f = csc.begin_read('output/'+dipole_data['current_filename']+'-dipole-field.tsv')
-	min = dipole_data['histo_min']*1e6
-	max = dipole_data['histo_max']*1e6 #x1,000,000 for MHz --> Hz
-	#then import the crystal structure
-	a,alpha,a_cart,r_atoms,q_atoms,m_atoms,k_atoms,name_atoms = stored_unit_cell()
-	L = difn.mag_unit_cell_size(k_atoms)
-	r_atoms = difn.zero_if_close(r_atoms)
-	r_unit,q_unit,mu_unit,names_unit = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], L)
-	#then delete all atoms outside the magnetic unit cell
-	r_unit,q_unit,mu_unit,names_unit = difn.make_crystal_trim_para(r_unit,q_unit,mu_unit,names_unit,a_cart,L)
-	r_muonophile = []
-	for i in range(len(r_unit)):
-		if names_unit[i] == bond_element:
-			r_muonophile.append(r_unit[i])
-	r_unit = difast.reshape_array(r_unit)
-	r_muonophile = difast.reshape_array(r_muonophile)
-	not_eof = True
-	#open the files to write to:
-	meta_out = {}
-	meta_out['title'] = meta['title']
-	meta_out['dipole_filename'] = 'output/'+dipole_data['current_filename']+'-dipole-field.tsv'
-	meta['desc'] = 'Frequencies from '+meta_out['dipole_filename']+' between 0.9 and 1.1 angstroms from an oxygen, and not less than 0.9 angstroms from other stuff'
-	properties_out = ['rho_x','rho_y','rho_z','r_x','r_y','r_z','B_x','B_y','B_z','omega']
-	#output = csc.begin(meta_out,properties_out,'output/'+dipole_data['current_filename']+'-frequencies-raw-near-O.tsv')
-	output = csc.begin(meta_out,properties_out,'output/'+dipole_data['current_filename']+'-near-O-dipole-field.tsv')
-	j = 0
-	t_start = time.clock()
-	while not_eof:
-		j += 1
-		if j%1000 == 0:
-			print 'line '+str(j)+'...',
-		values,error = csc.readline(f,properties)
-		if error == 'EOF':
-			not_eof = False
-		elif error == None:
-			r_dip = difast.reshape_vector(values['r'])
-			r_rel = r_unit-r_dip
-			if (np.sum(r_rel*r_rel, 0)>bond_min).all(): #only keep it if they're all greater!
-				r_rel = r_muonophile-r_dip #redo this to be fom muonophiles
-				if (np.sum(r_rel*r_rel, 0)<bond_max).any(): #and if it's less than max from any muon-lover
-					vals_list = [values['rho_x'],values['rho_y'],values['rho_z'],values['r'][0],values['r'][1],values['r'][2],values['B'][0],values['B'][1],values['B'][2],values['omega']]
-					csc.append(vals_list,output)
-	csc.close(f)
-	csc.close(output)
-	t_elapsed = time.clock()-t_start
-	return ui.menu([
-	['q','back to dipole menu',histo_freq,'']
-	],'List of frequencies written in '+ui.s_to_hms(t_elapsed))
-
-# This old version of the function throws a memoryerror on reading large files. Is there any hope for it? 998
-# Its advantage is that it loads the file and then does all processing in fast, smart NumPy.
-#~ def histo_save_raw_near():
-	#~ neardists = np.array([0.1,0.2,0.5,0.8,1.,1.5,2.])*1e-10 #angstroma, for testing
-	#~ dipole_data = load_current('dipole')
-	#~ print 'Reading dipole field file...',
-	#~ dipole_filename,title,values = get_csc('output','-dipole-field.tsv',dipole_data['current_filename'],'of your dipole field file')
-	#~ r_dip,B,omega = csc_to_dipole_field(values)
-	#~ print 'excluding positions too near to atoms...',
-	#~ min = dipole_data['histo_min']*1e6
-	#~ max = dipole_data['histo_max']*1e6 #x1,000,000 for MHz --> Hz
-	#~ r_dip = difast.reshape_array(r_dip)
-	#~ omega = np.reshape(omega,(1,len(omega)))
-	#~ #then import the crystal structure
-	#~ a,alpha,a_cart,r_atoms,q_atoms,m_atoms,k_atoms,name_atoms = stored_unit_cell()
-	#~ L = difn.mag_unit_cell_size(k_atoms)
-	#~ r_atoms = difn.zero_if_close(r_atoms)
-	#~ r_unit,q_unit,mu_unit,names_unit = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], L)
-	#~ #then delete all atoms outside the magnetic unit cell
-	#~ r_unit,q_unit,mu_unit,names_unit = difn.make_crystal_trim_para(r_unit,q_unit,mu_unit,names_unit,a_cart,L)
-	#~ r_unit = difast.reshape_array(r_unit)
-	#~ for near in neardists:
-		#~ discard = np.ones(len(r_dip[0]),np.bool) #is the distance relative to an atom too close? Start all false...
-		#~ #print np.shape(r_dip),np.shape(r_unit),np.shape(r_unit[:,0])
-		#~ for i in range(len(r_unit[0])):
-			#~ r_rel = r_dip-np.reshape(r_unit[:,i],(3,1)) #find how far the dipole field point is from all the atoms 998 why does this need reshaping to go from (3,) to (3,1)?
-			#~ #print np.shape(discard),np.shape((np.sqrt(np.sum(r_rel*r_rel, 0))>near))
-			#~ discard = np.bitwise_and(discard,(np.sqrt(np.sum(r_rel*r_rel, 0))>near)) #if any of them is closer than near, set this to false to discard. Using bitwise_or means that only continual 'true's will result in an array element not being discarded in a moment
-			#~ #print np.sqrt(np.sum(r_rel*r_rel, 0))>1e-10
-		#~ #exit()
-		#~ #print 'omegashape1',np.shape(omega),np.shape(discard)
-		#~ omega = np.compress(discard,omega,axis=1) #discard those dipole field points too close to atoms
-		#~ r_dip = np.compress(discard,r_dip,axis=1) #discard those dipole field points too close to atoms
-		#~ r_unit = np.compress(discard,r_unit,axis=1) #discard those dipole field points too close to atoms
-		#~ #print 'omegashape',np.shape(omega)
-		#~ print 'writing file...'
-		#~ omega_to_export = []
-		#~ for i in range(len(omega_far[0])):
-			#~ if omega[0][i] > min and omega[0][i] < max:
-				#~ omega_to_export.append([omega[0][i]])
-		#~ meta = {}
-		#~ meta['title'] = title
-		#~ meta['dipole_filename'] = dipole_filename
-		#~ meta['desc'] = 'Frequencies from '+dipole_filename+' with positions closer than '+str(near)+' m to an atom removed'
-		#~ properties = ['#f'] #slightly hackily calls this #f because then R won't fall over when it reads it
-		#~ filename = 'output/'+dipole_data['current_filename'] + '-frequencies-raw-near-removed-'+str(near*1e10)+'.tsv'
-		#~ if csc.write(meta,properties,omega_to_export,filename):
-			#~ print 'success!'
-		#~ else:
-			#~ print 'failure! For some reason?! Try again?' #this won't display for long enough to be useful 998
-	#~ return histo_freq
 
 #999 this whole function is a hack, make it good if it's worth it
 def dipole_symmetry_eqv2():
@@ -1698,7 +1942,7 @@ def dipole_symmetry_eqv2():
 	mu_fast = difast.reshape_array(mu)
 	print 'Reading dipole field file...',
 	#~ meta,properties,f = csc.begin_read('output/'+dipole_data['current_filename']+'-dipole-field.tsv')
-	meta,properties,f = csc.begin_read('output/Ba2NaOsO6-FM111-highres-2-dipole-field.tsv')
+	meta,properties,f = csc.begin_read(config.output_dir+'/Ba2NaOsO6-FM111-highres-2-dipole-field.tsv')
 	min = 3.8*1e6
 	max = 4.0*1e6 #x1,000,000 for MHz --> Hz
 	#then import the crystal structure
@@ -1706,7 +1950,7 @@ def dipole_symmetry_eqv2():
 	#open the files to write to:
 	meta_out = {}
 	meta_out['title'] = meta['title']
-	meta_out['dipole_filename'] = 'output/'+dipole_data['current_filename']+'-dipole-field.tsv'
+	meta_out['dipole_filename'] = config.output_dir+'/'+dipole_data['current_filename']+'-dipole-field.tsv'
 	meta['desc'] = 'Frequencies from '+meta_out['dipole_filename']+' between 0.9 and 1.1 angstroms from an oxygen, and not less than 0.9 angstroms from other stuff'
 	properties_out = ['rho_x','rho_y','rho_z','r_x','r_y','r_z','omega_1','omega_2'] #998 include number of symmetry-eqv points?
 	#output = csc.begin(meta_out,properties_out,'output/'+dipole_data['current_filename']+'-frequencies-raw-near-O.tsv')
@@ -1776,7 +2020,7 @@ def dipole_symmetry_eqv2():
 	meta_out['histo_total'] = total #total number of field points taken
 	properties_out = ['f','pdf','n']
 	#~ filename = 'output/'+dipole_data['current_filename'] + '-frequency-histogram.tsv'
-	filename = 'output/Ba2NaOsO6-FM111-highres-2-dipole-field-symeqv.tsv'#999
+	filename = config.output_dir+'/Ba2NaOsO6-FM111-highres-2-dipole-field-symeqv.tsv'#999
 	output = csc.begin(meta_out,properties_out,filename)
 	#work out the prefactor to turn number of counts into a probability density
 	n2p = 1/(binwidth*total) #ie divide by bin width and total number
@@ -1808,16 +2052,16 @@ def dipole_symmetry_eqv():
 	mu_fast = difast.reshape_array(mu)
 	print 'Reading dipole field file...',
 	#~ meta,properties,f = csc.begin_read('output/'+dipole_data['current_filename']+'-dipole-field.tsv')
-	meta,properties,f = csc.begin_read('output/CuBF4-AFM7-nearHF2-mags-dipole-field.tsv')
-	min = 0*1e6
-	max = 10*1e6 #x1,000,000 for MHz --> Hz
+	meta,properties,f = csc.begin_read('output/Ba2NaOsO6-FM111-highres-2-dipole-field.tsv')
+	min = 3.8*1e6
+	max = 4.0*1e6 #x1,000,000 for MHz --> Hz
 	#then import the crystal structure
 	not_eof = True
 	#open the files to write to:
 	meta_out = {}
 	meta_out['title'] = meta['title']
-	meta_out['dipole_filename'] = 'output/'+dipole_data['current_filename']+'-dipole-field.tsv'
-	meta['desc'] = 'Frequencies from '+meta_out['dipole_filename']+' with sym eqv near HF2'
+	meta_out['dipole_filename'] = config.output_dir+'/'+dipole_data['current_filename']+'-dipole-field.tsv'
+	meta['desc'] = 'Frequencies from '+meta_out['dipole_filename']+' between 0.9 and 1.1 angstroms from an oxygen, and not less than 0.9 angstroms from other stuff'
 	properties_out = ['rho_x','rho_y','rho_z','r_x','r_y','r_z','omega_1','omega_2'] #998 include number of symmetry-eqv points?
 	#output = csc.begin(meta_out,properties_out,'output/'+dipole_data['current_filename']+'-frequencies-raw-near-O.tsv')
 	#output = csc.begin(meta_out,properties_out,'output/Ba2NaOsO6-FM111-highres-2-dipole-field-symeqv.tsv')
@@ -1825,8 +2069,8 @@ def dipole_symmetry_eqv():
 	
 	#999
 	min=0
-	max=30e6
-	bins=300
+	max=5e6
+	bins=100
 	
 	
 	binwidth = (max-min)/bins
@@ -1835,7 +2079,7 @@ def dipole_symmetry_eqv():
 	t_start = time.clock()
 	omega_x = []
 	omega_y = []
-	while not_eof and total < 100001:
+	while not_eof and total < 1000001:
 		print total
 		values,error = csc.readline(f,properties)
 		if error == 'EOF':
@@ -1890,7 +2134,7 @@ def dipole_symmetry_eqv():
 	meta_out['histo_total'] = total #total number of field points taken
 	properties_out = ['f_in','f_out','pdf','n']
 	#~ filename = 'output/'+dipole_data['current_filename'] + '-frequency-histogram.tsv'
-	filename = 'output/CuBF4-AFM7-nearHF2-dipole-field-symeqv2dhisto.tsv' #999
+	filename = 'output/Ba2NaOsO6-FM111-highres-2-dipole-field-symeqv2dhisto.tsv' #999
 	output = csc.begin(meta_out,properties_out,filename)
 	#work out the prefactor to turn number of counts into a probability density
 	n2p = 1/(binwidth*binwidth*total) #ie divide by bin area and total number
@@ -1908,7 +2152,7 @@ def draw_freq():
 	global visual_window_contents
 	dipole_data = load_current('dipole')
 	draw_data = load_current('draw')
-	dipole_filename,title,values = get_csc('output','-dipole-field.tsv',dipole_data['current_filename'],'of your dipole field file')
+	dipole_filename,title,values = get_csc(config.output_dir,'-dipole-field.tsv',dipole_data['current_filename'],'of your dipole field file')
 	update_value('dipole', 'current_filename', dipole_filename)
 	r,B,omega = csc_to_dipole_field(values)
 	draw_magnetic_unit_cell()
@@ -2318,7 +2562,7 @@ def draw_field_filename():
 		default_filename = draw_data['field_filename']
 	else:
 		default_filename=''
-	directory = 'output'
+	directory = config.output_dir
 	suffix = '-dipole-field.tsv'
 	filename = ui.get_filename(directory,suffix,default_filename,file_description='of your dipole field file')
 	update_value('draw','field_filename',filename)
@@ -2358,17 +2602,17 @@ def draw_3d():
 	return draw
 
 def draw_save():
-	return save_output('draw','visualisation settings','output','-visual',draw)
+	return save_output('draw','visualisation settings',config.output_dir,'-visual',draw)
 
 def draw_load():
-	return load_output('draw','visualisation settings','output','-visual',draw)
+	return load_output('draw','visualisation settings',config.output_dir,'-visual',draw)
 
 def draw_povexport():
 	global visual_window
 	global visual_window_contents
 	doexport = False
 	while True:
-		directory = 'output'
+		directory = config.output_dir
 		filename = ui.inputscreen('Please enter a filename for your POV-ray file:','str',notblank=True)
 		full_filename = directory+'/'+filename+'.pov'
 		if os.path.exists(full_filename):
