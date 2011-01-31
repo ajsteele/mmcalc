@@ -1,0 +1,30 @@
+1.0.5.1
+
+* Fixes accidental missed variable name change which stops the program calculating dipole fields!
+
+1.0.5
+ *** CRYSTAL STRUCTURE FILES WILL NO LONGER OPEN UNLESS THEY ARE CALLED '*-crystal-structure.json' where * is a wildcard for any name you like. MmCalc will automatically add this to new files, so there is no need to append it when asked to specify a filename. ***
+ *** Truly spherical crystals will be built where alpha,beta,gamma != 90 degrees ***
+ * Total redevelopment of the visualisation controls
+  * A new menu devoted entirely to it
+  * Customisation of atom colour, size, opacity...
+  * Rationalisation of the functions controlling visualisation
+  * 3D stereo options!!!
+  * POV-Ray export
+ * Can now read TSV files regardless of type of line break (Linux: \n, Windows: \r\n, Mac: \r) used
+ * Convergence test now tries 10 points rather than 3
+ * Even more bugfixes!
+  * All non-magnetic ions are now removed when building vcrystals...previously the 0th remained regardless of moment or absence thereof.
+
+1.0.4
+ * Doesn't write NaNs to *-dipole-field.tsv, because some versions of NumPy crash on numpy.float('nan') and they're essentially useless anyway.
+ * csc module writes more metadata to output files.
+ * More minor bugfixes.
+
+1.0.3
+ * Massive speed increase in the loop which calculates dipole fields (~50-100x) thanks to executing the loop entirely in NumPy rather than as a Python for loop.
+ ** See http://stackoverflow.com/questions/2586749/what-is-the-most-platform-and-python-version-independent-way-to-make-a-fast-loop
+ * Some minor bugfixes
+
+1.0.1
+ * can now draw fields between selected values, so you can draw fields where infinities are present.
