@@ -52,7 +52,7 @@ visual_window_contents = None
 # first-run initialisation: check for the presence of the current/ and
 # output/ directories, and create them if absent.
 for dir in [config.current_dir,config.output_dir]:
-    if !os.path.isdir(dir):
+    if not(os.path.isdir(dir)):
         os.mkdir(dir)
 
 # from http://effbot.org/zone/python-list.htm this finds all occurrences of value in a Python list
@@ -106,7 +106,7 @@ def save_current(variablename,stuff):
 def load_current(variablename):
 	#check if the file exists
 	if os.path.exists(config.current_dir+'/'+variablename+'.json'):
-		stuff = json_custom_load(config.current_dir'/'+variablename+'.json')
+		stuff = json_custom_load(config.current_dir+'/'+variablename+'.json')
 		return stuff
 	#if not, just return a blank dictionary
 	else:
