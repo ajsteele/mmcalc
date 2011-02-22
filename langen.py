@@ -35,7 +35,8 @@ clearcommand = 'clear' #system command to clear the console
 # ==Windows== #
 # (a few changes are necessary because Windows command prompt doesn't support UTF-8 text or ANSI text formatting commands)
 import platform
-if platform.system() == 'Windows':
+import config
+if platform.system() == 'Windows' or config.unicode == False:
 	# ==special characters== #
 	# (paraphrase unicode issues)
 	alpha = 'alpha'
@@ -126,7 +127,9 @@ drawing_crystal_unit_cell = 'Drawing crystallogaphic unit cell'+ellipsis
 drawing_constrained_positions = 'Drawing positions which satisfy constraints'+ellipsis
 
 # ==errors== #
+err = red+'ERROR: '+reset
 err_no_length_unit = 'You have not specified a length unit. Please go to the crystal menu and specify one to continue.'
+err_constraints_too_harsh = 'Your constraints are too harsh: no points satisfy them!'
 
 # ==exit== #
 goodbye = 'Thanks for using M'+mu2+'Calc!'

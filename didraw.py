@@ -10,6 +10,7 @@ except:
 import numpy
 import difn
 import math
+import time
 
 #initialise the scene
 def initialise(stereo):
@@ -168,6 +169,18 @@ def unitcell_init(a,scale):
 		components.append(v.cylinder(pos=(a[(i+1)%3][0],a[(i+1)%3][1],a[(i+1)%3][2]), axis=(a[i][0],a[i][1],a[i][2]), radius=radius))
 		components.append(v.cylinder(pos=(a[(i+2)%3][0],a[(i+2)%3][1],a[(i+2)%3][2]), axis=(a[i][0],a[i][1],a[i][2]), radius=radius))
 		components.append(v.cylinder(pos=(a[(i+1)%3][0]+a[(i+2)%3][0],a[(i+1)%3][1]+a[(i+2)%3][1],a[(i+1)%3][2]+a[(i+2)%3][2]), axis=(a[i][0],a[i][1],a[i][2]), radius=radius))
+	return components
+
+def bonds(bonds,scale):
+	radius = 0.01*scale
+	#initialise variable to return
+	components = []
+	#draw the cylinders (one for each vector at the origin, two of each other vector from the tip of each vector, one of each vector from the sum of each pair of vectors)
+	for bond in bonds:
+		print bond
+		components.append(v.cylinder(pos=bond[0], axis=bond[1]-bond[0], radius=radius))
+	print len(bonds)
+	time.sleep(5)
 	return components
 
 def draw_atoms(r,name,q,mu,colourtype,scale,custom):

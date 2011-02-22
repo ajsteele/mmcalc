@@ -324,21 +324,29 @@ def trans(r,transform,translate):
 	R = numpy.remainder(R,1)
 	return R
 
+# gen_unit_cell
+# --------------------------
+# This function tranforms input coordinates r_in with the appropriate stuff for space group sg
+# It will also transform a general array of attr_in, which might contain atom names, magnetic moments etc
+# If attr_in is set to False, this will not be done and no attr_out will be returned
 def gen_unit_cell(sg,r_in,attr_in):
 	sgnum = sg['number']
 	setting = sg['setting']
 	transform, translate = get_generators(sgnum, setting)
 	#initialise output variables
 	r_gen = numpy.zeros((len(r_in)*len(transform),3),numpy.float)
-	attr_gen = []
+	if attr_in != False:
+		attr_gen = []
 	#perform every transformation on every vector
 	for i in range(len(r_in)):
 		for j in range(len(transform)):
 			r_gen[len(transform)*i+j] = trans(r_in[i],transform[j],translate[j])
-			attr_gen.append(attr_in[i])
+			if attr_in != False:
+				attr_gen.append(attr_in[i])
 	#throw away the duplicates
 	r_out =[]
-	attr_out = []
+	if attr_in != False:
+		attr_out = []
 	for i in range(len(r_gen)):
 		#only check the subsequent values to discard, such that the first of each is kept
 		keep = True
@@ -348,6 +356,10 @@ def gen_unit_cell(sg,r_in,attr_in):
 				keep = False
 		if keep:
 			r_out.append(r_gen[i])
-			attr_out.append(attr_gen[i])
+			if attr_in != False:
+				attr_out.append(attr_gen[i])
 	r_out = difn.zero_if_close(r_out)
-	return r_out, attr_out
+	if attr_in != False:
+		return r_out, attr_out
+	else:
+		return r_out

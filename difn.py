@@ -67,6 +67,9 @@ def triclinic(a,alpha):
 	c_cartesian = array((0,0,a[2]))
 	return array((a_cartesian,b_cartesian,c_cartesian))
 
+def frac2abs(r_frac,a_cart):
+	return dot(a_cart,r_frac)
+
 # reciplatt
 # --------------------------
 # Turns a 3x3 array of cartesian vectors into their reciprocal lattice vectors.
@@ -93,10 +96,12 @@ def blank_vector_array():
 
 def unit_cell_shared_atoms(r,attr):
 	atoms_r = blank_vector_array()
-	atoms_attr = []
+	if attr is not False:
+		atoms_attr = []
 	for i in range(len(r)):
 		atoms_r = vector_append(atoms_r,r[i])
-		atoms_attr.append(attr[i])
+		if attr is not False:
+			atoms_attr.append(attr[i])
 		iszero = (array(r[i]) == 0)
 		numberofzeroes = iszero.tolist().count(True) #NumPy appears not to have a count function, so must convert to a Python list first
 		#do nothing if there are no zeros
@@ -107,7 +112,8 @@ def unit_cell_shared_atoms(r,attr):
 					extra_r[j] = 1
 					break #there's only one, so no point in keepin' loopin'
 			atoms_r = vector_append(atoms_r,extra_r)
-			atoms_attr.append(attr[i])
+			if attr is not False:
+				atoms_attr.append(attr[i])
 		if numberofzeroes == 2: #if there are two zeros...
 			permutations = [[0,1],[1,0],[1,1]]
 			for k in range(3): #3 for 3 permutations
@@ -118,14 +124,19 @@ def unit_cell_shared_atoms(r,attr):
 						extra_r[j] = permutations[k][l]
 						l += 1 #probably an if...break statement would take longer than just doing the loop once more..?
 				atoms_r = vector_append(atoms_r,extra_r)
-				atoms_attr.append(attr[i])
+				if attr is not False:
+					atoms_attr.append(attr[i])
 		if numberofzeroes ==3: #if it's three, just lob in all the permutations
 			permutations = [[1,0,0],[0,1,0],[0,0,1],[1,1,0],[1,0,1],[0,1,1],[1,1,1]]
 			for k in range(7): #7 for 7 permutations
 				extra_r = permutations[k]
 				atoms_r = vector_append(atoms_r,extra_r)
-				atoms_attr.append(attr[i])
-	return atoms_r,atoms_attr
+				if attr is not False:
+					atoms_attr.append(attr[i])
+	if attr is not False:
+		return atoms_r,atoms_attr
+	else:
+		return atoms_r
 
 # max_radius
 # --------------------------
@@ -467,9 +478,9 @@ def make_crystal(r_sphere,a,alpha,r_atoms,m_atoms,k_atoms, q_atoms, name_atoms,t
 				q_atoms.pop(i)
 				name_atoms.pop(i)
 	#make a crystal from -L to L
-	r_i,mu_i, q,names = make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms, -L, L)
+	r_i,mu_i,q,names = make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms, -L, L)
 	#shave off excess points in the currently-parallelepiped crystal
-	r_i, mu_i,q,names = make_crystal_sph(r_i, mu_i, q,names, r_max)
+	r_i,mu_i,q,names = make_crystal_sph(r_i, mu_i, q,names, r_max)
 	return L,r_i,mu_i,q,names,r_max
 
 #given a vector of vectors, this returns a vector of unit vectors

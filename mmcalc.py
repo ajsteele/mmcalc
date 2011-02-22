@@ -987,17 +987,26 @@ def draw_draw():
 		B_maxmax = omega_maxmax / difn.gamma_mu
 		do_draw = True
 		if len(r_to_draw) > 100000:
-			if ui.inputscreen('Your chosen minimum and maximum values will result in '+str(len(r_to_draw))+' field points being drawn. I strongly suggest you don\'t. Continue?','yn') == 'no':
+			if ui.inputscreen('Your chosen minimum and maximum values will result in '+str(len(r_to_draw))+' field points being drawn. I strongly suggest you don\'t. Continue?','yn',newscreen=False) == 'no':
 				do_draw = False #stop drawing the if user doesn't want computer-crippling-ness
 			else:
-				if ui.inputscreen('Drawing '+str(len(r_to_draw))+' points is REALLY NOT RECOMMENDED. Sure?','yn') == 'no':
+				if ui.inputscreen('Drawing '+str(len(r_to_draw))+' points is REALLY NOT RECOMMENDED. Sure?','yn',newscreen=False) == 'no':
 					do_draw = False #stop drawing the if user doesn't want computer-crippling-ness
 		elif len(r_to_draw) > 10000:
-			if ui.inputscreen('Your chosen minimum and maximum values will result in '+str(len(r_to_draw))+' field points being drawn. This may cause your computer to run slowly. Continue?','yn') == 'no':
+			if ui.inputscreen('Your chosen minimum and maximum values will result in '+str(len(r_to_draw))+' field points being drawn. This may cause your computer to run slowly. Continue?','yn',newscreen=False) == 'no':
 				do_draw = False #stop drawing the if user doesn't want computer-crippling-ness
 		if do_draw:
 			visual_window_contents['dipole_field'] = didraw.vector_field(r_to_draw,B_to_draw,B_minmin,B_maxmax,draw_data['field_colours'],0.2,scale)
-	
+	if draw_data['bonds_visible']:
+		print 'Drawing bonds...'
+		draw_data = generate_bonds()
+		bonds_to_draw = draw_data['generated_bonds']
+		bonds_to_draw_cart = np.zeros((len(bonds_to_draw),2,3))
+		for i in range(len(bonds_to_draw)):
+			for j in range(2):
+				bonds_to_draw_cart[i][j] = difn.frac2abs(bonds_to_draw[i][j],a_cart)
+		visual_window_contents['bonds'] = didraw.bonds(bonds_to_draw_cart,scale)
+
 def draw_magnetic_unit_cell_from_crystal():
 	draw_magnetic_unit_cell()
 	return draw_crystal
@@ -1213,7 +1222,7 @@ def dipole_points():
 					update_value('dipole','n_'+axis,a)
 	elif pointgen == 'm':
 		if dipole_data.has_key('n_monte'):
-			a = ui.inputscreen('Number of points to evaluate (blank for '+str(dipole_data['n_monte'])+':','int',0,eqmin=False,notblank=False)
+			a = ui.inputscreen('Number of points to evaluate (blank for '+str(dipole_data['n_monte'])+'):','int',0,eqmin=False,notblank=False)
 		else:
 			a = ui.inputscreen('Number of points to evaluate:','int',0,eqmin=False,notblank=True)
 		if a is not False:
@@ -1528,7 +1537,7 @@ def dipole_constraints_volume():
 	if n_constraint_vol != 0:
 		final_message = 'Points satisfying the constraints occupy about '+str(np.float(n_constraint_vol)/n_full_vol*100)+'% of the unit cell. To obtain approximately x points in your final histogram, generate a grid containing '+str(np.round(np.float(n_full_vol)/n_constraint_vol,3))+'x points [('+str(np.int(np.ceil((np.float(n_full_vol)/n_constraint_vol)**(1./3.))))+'x)^3 in the cubic case].'
 	else:
-		final_message = 'Your constraints are too harsh: no points satisfy them!'
+		final_message = lang.err_constraints_too_harsh
 	return ui.menu([
 	['q','back to dipole menu',dipole_constraints,'']
 	],final_message)
@@ -1587,6 +1596,7 @@ def get_constraints(r_unit,names_unit,constraints,length_unit):
 	constraint_r = difast.reshape_array(constraint_r)
 	return constraint_r,constraint_min,constraint_max
 
+# This function is in need of streamlining--there's a lot of duplication betwen generating the points on a grid and generating them Monte Carlo
 def calculate_dipole():
 	dipole_data = load_current('dipole')
 	crystal_data = load_current('crystal')
@@ -1657,6 +1667,11 @@ def calculate_dipole():
 			#throw some away, if necessary
 			if constraints is not False:
 				r_frac,r_dip = apply_constraints(r_frac,r_dip,constraint_r,constraint_min,constraint_max)
+			# if there are no remaining points after applying constraints
+			if r_frac.shape[1] == 0:
+				return ui.menu([
+				['q','back to dipole menu',dipole,'']
+				],lang.err+lang.err_constraints_too_harsh)
 			points_to_try = len(r_dip[0])
 			t_gen += time.clock() - t_gen_start
 			t_dip_start = time.clock()
@@ -1691,6 +1706,11 @@ def calculate_dipole():
 				#throw some away, if necessary
 				if constraints is not False:
 					r_frac,r_dip = apply_constraints(r_frac,r_dip,constraint_r,constraint_min,constraint_max)
+				# if there are no remaining points after applying constraints
+				if r_frac.shape[1] == 0:
+					return ui.menu([
+					['q','back to dipole menu',dipole,'']
+					],lang.err+lang.err_constraints_too_harsh)
 				runningtotal += len(r_dip[0])
 				if runningtotal < n_positions: #if we've not made it to the number of positions yet
 					points_to_try = len(r_dip[0]) #just do them all
@@ -1894,7 +1914,7 @@ def histo_save():
 	print 'Reading file...'
 	while not_eof:
 		if total%1000000 == 0:
-			print 'line '+str(total)+'...',
+			print 'line '+str(total)+'...'
 		values,error = csc.readline(f,properties)
 		if error == 'EOF':
 			not_eof = False
@@ -2225,6 +2245,8 @@ def draw_initialise():
 		draw_data['field_visible'] = False
 	if not draw_data.has_key('field_colours'):
 		draw_data['field_colours'] = 'rainbow'
+	if not draw_data.has_key('bonds_visible'):
+		draw_data['bonds_visible'] = False
 	save_current('draw',draw_data)
 
 def draw():
@@ -2291,12 +2313,13 @@ def draw():
 	['c','atom colours',draw_atom_colours,menu_data['atom_colours']],
 	['t','customise atoms',draw_customise_atoms,menu_data['atom_custom']],
 	['m','moments '+menu_data['moments_opposite'],draw_moments_onoff,menu_data['moments']],
-	['b','unit cell boundary '+menu_data['unitcell_opposite'],draw_unitcell_onoff,menu_data['unitcell']],
+	['i','unit cell boundary '+menu_data['unitcell_opposite'],draw_unitcell_onoff,menu_data['unitcell']],
 	['a','auto redraw '+menu_data['auto_redraw_opposite'],draw_auto_redraw_onoff,menu_data['auto_redraw']]]
 	if not draw_data['auto_redraw']:
 		menuoptions.append(['d','manual redraw',manual_redraw,''])
 	menuoptions.append(['u','unit cells',draw_unitcells,menu_data['unitcells']])
 	menuoptions.append(['f','field',draw_field,menu_data['field']])
+	menuoptions.append(['b','bonds',draw_bonds,'stuff'])
 #	['r','field repeat',b,menu_data['b']],
 	menuoptions.append(['3','3D stereo',draw_3d,menu_data['stereo_3d']])
 	menuoptions.append(['v','save settings',draw_save,''])
@@ -2588,6 +2611,194 @@ def draw_field_ranges():
 
 def draw_field_yesno():
 	return option_toggle('draw','field_visible',draw_field)
+
+# draw_bonds
+# --------------------------
+# A user input menu on the visualisation menu
+# ---
+# Draws bonds between atoms specified
+def draw_bonds():
+	draw_data = load_current('draw')
+	#if there are constraints
+	if draw_data.has_key('bonds') and len(draw_data['bonds']) != 0:
+		if draw_data['bonds_visible']:
+			visible_menu_text = 'do not draw'
+			visible_menu_info = 'currently shown'
+		else:
+			visible_menu_text = 'draw'
+			visible_menu_info = 'currently hidden'
+		return ui.menu([
+		['a','add bond',draw_bonds_add,''],
+		['d','delete bond',draw_bonds_delete,''],
+		['e','edit bond',draw_bonds_edit,''],
+		['v',visible_menu_text,draw_bonds_yesno,visible_menu_info],
+		['q','back to visualisation menu',draw,'']
+		],draw_bonds_table())
+	#if none has been set yet
+	else:
+		return ui.menu([
+		['a','add bond',draw_bonds_add,''],
+		['q','back to visualisation menu',draw,'']
+		])
+
+# generate_bonds
+# --------------------------
+# A function called by the bonds menu
+# ---
+# Uses from and to values to loop through the atoms defined in the crystal menu and find coordinates
+# Then generates equivalent positions using sg.gen_unit_cell
+def generate_bonds():
+	crystal_data = load_current('crystal')
+	length_unit, length_unit_name = get_length_unit(crystal_data['length_unit'])
+	draw_data = load_current('draw')
+	bonds_output = []
+	for bond in draw_data['bonds']:
+		bonds_from = []
+		bonds_to = []
+		for atom in crystal_data['atoms']:
+			if atom[0] == bond[0]: #if the element = the from element specified
+				bonds_from.append([atom[1],atom[2],atom[3]]) #append the coordinates
+			if atom[0] == bond[1]: #if the element = the to element specified
+				bonds_to.append([atom[1],atom[2],atom[3]]) #append the coordinates
+		print 'poo',len(bonds_from)
+		bonds_from_gen = difn.unit_cell_shared_atoms(sg.gen_unit_cell({'number':crystal_data['space_group'],'setting':crystal_data['space_group_setting']},bonds_from, False),False)
+		print 'poo2',len(bonds_from_gen)
+		bonds_to_gen = difn.unit_cell_shared_atoms(sg.gen_unit_cell({'number':crystal_data['space_group'],'setting':crystal_data['space_group_setting']},bonds_to, False),False)
+		a_cart=difn.triclinic(np.array([crystal_data['a']*length_unit,crystal_data['b']*length_unit,crystal_data['c']*length_unit]),np.array([crystal_data['alpha'],crystal_data['beta'],crystal_data['gamma']]))
+		for bond_from in bonds_from_gen:
+			bond_from_cart = difn.frac2abs(bond_from,a_cart)
+			for bond_to in bonds_to_gen:
+				bond_to_cart = difn.frac2abs(bond_to,a_cart)
+				length = (bond_from_cart[0]-bond_to_cart[0])**2+(bond_from_cart[1]-bond_to_cart[1])**2+(bond_from_cart[2]-bond_to_cart[2])**2
+				if length !=0 and length < (bond[2]*length_unit)**2: #if the length is nonzero and not below the maximum specified
+					bonds_output.append([list(bond_from),list(bond_to)])
+	update_value('draw','generated_bonds',bonds_output)
+	return load_current('draw')
+
+def draw_bonds_yesno():
+	return option_toggle('draw','bonds_visible',draw_bonds)
+
+# draw_bonds_table
+# --------------------------
+# A table-generating function used within draw_bonds
+# ---
+# OUTPUT
+# A table of existing bonds to be drawn as a string; nothing if no bonds are defined; an error if no length unit has been specified
+def draw_bonds_table():
+	#load (and print out) any already-existent constraints
+	crystal_data = load_current('crystal')
+	draw_data = load_current('draw')
+	if crystal_data.has_key('length_unit'):
+		if crystal_data['length_unit'] == 'n':
+			length_unit = lang.nm
+		elif crystal_data['length_unit'] == 'm':
+			length_unit = lang.m
+		elif crystal_data['length_unit'] == 'a':
+			length_unit = lang.angstrom
+		
+		if draw_data.has_key('bonds'):
+			bonds = draw_data['bonds']
+			bonds_table_array = []
+			bonds_table_array.append(['#','to','from','l_max ('+length_unit+')'])
+			i = 1
+			for bond in bonds:
+				bond_row = []
+				bond_row.append(str(i))
+				bond_row.append(bond[0])
+				bond_row.append(str(bond[1]))
+				#if constraint[2] is False:
+				#	constraint_row.append(lang.infinity)
+				#else:
+				bond_row.append(str(bond[2]))
+				bonds_table_array.append(bond_row)
+				i += 1
+			return ui.table(bonds_table_array)
+		else:
+			return ''
+	else:
+		return lang.err_no_length_unit #filling in this is silly if there's no length unit set
+
+# draw_bonds
+# --------------------------
+# A user input function on the draw bonds menu
+# ---
+# Gets a new bond by enquiring which atoms to draw it between, plus a maximum length
+def draw_bonds_add():
+	newbond=[]
+	newbond.append(ui.inputscreen('                from:','string',notblank=True))
+	newbond.append(ui.inputscreen('                  to:','string',notblank=True,newscreen=False))
+	crystal_data = load_current('crystal')
+	if crystal_data.has_key('length_unit'):
+		length_unit, length_unit_name = get_length_unit(crystal_data['length_unit'])
+	else:
+		length_unit_name = lang.red+'length unit not defined'+lang.reset
+	newbond.append(ui.inputscreen('        max length: ('+length_unit_name+"):",'float',0,eqmin=False,notblank=True,newscreen=False))
+	#load the old bonds
+	draw_data = load_current('draw')
+	if draw_data.has_key('bonds'):
+		bonds = draw_data['bonds']
+	else:
+		bonds = []
+	bonds.append(newbond)
+	update_value('draw','bonds',bonds)
+	return draw_bonds
+
+# dipole_bonds_delete
+# --------------------------
+# A user input function on the dipole constraints menu
+# ---
+# Deletes a constraint on the muon position
+def draw_bonds_delete():
+	draw_data = load_current('draw')
+	bonds = draw_data['bonds']
+	bonds_data = draw_bonds_table()
+	if len(constraints) > 1:
+		query = 'Delete which bond? (1-'+str(len(constraints))+', blank to cancel)'
+	else:
+		query =  'There is only one bond. Enter 1 to confirm deletion, or leave blank to cancel:'
+	kill_me = ui.inputscreen(query,'int',1,len(constraints))
+	if kill_me is not False:
+		del constraints[kill_me-1]
+		update_value('dipole','constraints',constraints)
+	return draw_bonds
+
+# dipole_bonds_edit
+# --------------------------
+# A user input function on the visualise > bonds menu
+# ---
+# Edits a bond
+def draw_bonds_edit():
+	draw_data = load_current('draw')
+	bonds = draw_data['bonds']
+	bonds_data = draw_bonds_table()
+	if len(bonds) > 1:
+		query = 'Edit which bond? (1-'+str(len(bonds))+')'
+		edit_me = ui.inputscreen(query,'int',1,len(bonds),text=bonds_data) - 1 #arrays start at zero
+	else:
+		edit_me = 0
+	#make readable the pre-existing constraints
+	bond=[]
+	bond.append(ui.inputscreen('             from (blank for '+bonds[edit_me][0]+'):','string',notblank=False))
+	bond.append(ui.inputscreen('               to (blank for '+bonds[edit_me][1]+'):','string',notblank=False,newscreen=False))
+	#get the length unit
+	crystal_data = load_current('crystal')
+	if crystal_data.has_key('length_unit'):
+		length_unit, length_unit_name = get_length_unit(crystal_data['length_unit'])
+	else:
+		length_unit_name = lang.red+'length unit not defined'+lang.reset
+	bond.append(ui.inputscreen('         max length (blank for '+str(bonds[edit_me][2])+' '+length_unit_name+"):",'float',0,eqmin=True,notblank=False,newscreen=False))
+	#set blank values to defaults
+	if bond[0] is False:
+		bond[0] = bonds[edit_me][0]
+	if bond[1] is False:
+		bond[1] = bonds[edit_me][1]
+	if bond[2] is False:
+		bond[2] = bonds[edit_me][2]
+	#if these are set to no constraint, then set the actual values to Boolean false
+	#update the values
+	bonds[edit_me] = bond
+	update_value('draw','bonds',bonds)
+	return draw_bonds
 
 def draw_3d():
 	a = ui.option([
