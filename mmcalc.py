@@ -1007,10 +1007,16 @@ def draw_draw():
 		draw_data = generate_bonds()
 		bonds_to_draw = draw_data['generated_bonds']
 		bonds_to_draw_cart = np.zeros((len(bonds_to_draw),2,3))
+		bonds_to_draw_cart_and_attr = []
+		# though this uses the speed of numpy arrays, we can't do the whole thing with them because they force you to
+		#predefine a type, and don't allow you to change array dimensions. The problem with this is that some elements can
+		#be a vector, some a scalar, and some a boolean, eg colour can be [r,g,b] or False
 		for i in range(len(bonds_to_draw)):
+			bond_cart = np.zeros((2,3))
 			for j in range(2):
-				bonds_to_draw_cart[i][j] = difn.frac2abs(bonds_to_draw[i][j],a_cart)
-		visual_window_contents['bonds'] = didraw.bonds(bonds_to_draw_cart,scale)
+				bond_cart[j] = difn.frac2abs(bonds_to_draw[i][j],a_cart)
+				bonds_to_draw_cart_and_attr.append([bond_cart[0],bond_cart[1],bonds_to_draw[i][2],bonds_to_draw[i][3],bonds_to_draw[i][4]])
+		visual_window_contents['bonds'] = didraw.bonds(bonds_to_draw_cart_and_attr,scale)
 
 def draw_magnetic_unit_cell_from_crystal():
 	draw_magnetic_unit_cell()
@@ -2324,7 +2330,7 @@ def draw():
 		menuoptions.append(['d','manual redraw',manual_redraw,''])
 	menuoptions.append(['u','unit cells',draw_unitcells,menu_data['unitcells']])
 	menuoptions.append(['f','field',draw_field,menu_data['field']])
-	menuoptions.append(['b','bonds',draw_bonds,'stuff'])
+	menuoptions.append(['b','bonds',draw_bonds,''])
 #	['r','field repeat',b,menu_data['b']],
 	menuoptions.append(['3','3D stereo',draw_3d,menu_data['stereo_3d']])
 	menuoptions.append(['v','save settings',draw_save,''])
@@ -2417,9 +2423,9 @@ def draw_atoms_table():
 					if atom[3] == 'r':
 						size_unit = ''
 					elif atom[3] == 'n':
-						size_unit = ' nm'
+						size_unit = ' '+lang.nm
 					elif atom[3] == 'm':
-						size_unit = ' m'
+						size_unit = ' '+lang.m
 					else:
 						size_unit = ' '+lang.angstrom
 					atom_row.append(str(atom[4])+size_unit) #size
@@ -2656,7 +2662,7 @@ def generate_bonds():
 	crystal_data = load_current('crystal')
 	length_unit, length_unit_name = get_length_unit(crystal_data['length_unit'])
 	draw_data = load_current('draw')
-	bonds_output = []
+	bonds_onecell = []
 	for bond in draw_data['bonds']:
 		bonds_from = []
 		bonds_to = []
@@ -2665,9 +2671,7 @@ def generate_bonds():
 				bonds_from.append([atom[1],atom[2],atom[3]]) #append the coordinates
 			if atom[0] == bond[1]: #if the element = the to element specified
 				bonds_to.append([atom[1],atom[2],atom[3]]) #append the coordinates
-		print 'poo',len(bonds_from)
 		bonds_from_gen = difn.unit_cell_shared_atoms(sg.gen_unit_cell({'number':crystal_data['space_group'],'setting':crystal_data['space_group_setting']},bonds_from, False),False)
-		print 'poo2',len(bonds_from_gen)
 		bonds_to_gen = difn.unit_cell_shared_atoms(sg.gen_unit_cell({'number':crystal_data['space_group'],'setting':crystal_data['space_group_setting']},bonds_to, False),False)
 		a_cart=difn.triclinic(np.array([crystal_data['a']*length_unit,crystal_data['b']*length_unit,crystal_data['c']*length_unit]),np.array([crystal_data['alpha'],crystal_data['beta'],crystal_data['gamma']]))
 		for bond_from in bonds_from_gen:
@@ -2676,8 +2680,17 @@ def generate_bonds():
 				bond_to_cart = difn.frac2abs(bond_to,a_cart)
 				length = (bond_from_cart[0]-bond_to_cart[0])**2+(bond_from_cart[1]-bond_to_cart[1])**2+(bond_from_cart[2]-bond_to_cart[2])**2
 				if length !=0 and length < (bond[2]*length_unit)**2: #if the length is nonzero and not below the maximum specified
-					bonds_output.append([list(bond_from),list(bond_to)])
-	update_value('draw','generated_bonds',bonds_output)
+					bonds_onecell.append([list(bond_from),list(bond_to),bond[3],bond[4],bond[5]]) #from, to, colour and radius
+	if draw_data['L'][0] > 1 or draw_data['L'][1] > 1 or draw_data['L'][2] > 1: # if we're drawing more than a crystal unit cell
+		bonds_output=[]
+		for i in range(draw_data['L'][0]):
+			for j in range(draw_data['L'][1]):
+				for k in range(draw_data['L'][2]):
+					for bond in bonds_onecell:
+						bonds_output.append([[bond[0][0]+i,bond[0][1]+j,bond[0][2]+k],[bond[1][0]+i,bond[1][1]+j,bond[1][2]+k],bond[2],bond[3],bond[4]]) #from, to, colour and radius
+		update_value('draw','generated_bonds',bonds_output)
+	else: #otherwise, we've already done this, so just update the value
+		update_value('draw','generated_bonds',bonds_onecell) 
 	return load_current('draw')
 
 def draw_bonds_yesno():
@@ -2704,7 +2717,7 @@ def draw_bonds_table():
 		if draw_data.has_key('bonds'):
 			bonds = draw_data['bonds']
 			bonds_table_array = []
-			bonds_table_array.append(['#','to','from','l_max ('+length_unit+')'])
+			bonds_table_array.append(['#','from','to','l_max ('+length_unit+')','colour','radius'])
 			i = 1
 			for bond in bonds:
 				bond_row = []
@@ -2715,7 +2728,23 @@ def draw_bonds_table():
 				#	constraint_row.append(lang.infinity)
 				#else:
 				bond_row.append(str(bond[2]))
+				if bond[3] is not False: #colour
+					bond_row.append(str(bond[3]))
+				else:
+					bond_row.append('[default]')
 				bonds_table_array.append(bond_row)
+				if bond[4] == 'd': #if atom size is default
+					bond_row.append('[default]') #size
+				else:
+					if bond[4] == 'r':
+						size_unit = ''
+					elif bond[4] == 'n':
+						size_unit = ' '+lang.nm
+					elif bond[4] == 'm':
+						size_unit = ' '+lang.m
+					else:
+						size_unit = ' '+lang.angstrom
+					bond_row.append(str(bond[5])+size_unit) #size
 				i += 1
 			return ui.table(bonds_table_array)
 		else:
@@ -2738,6 +2767,20 @@ def draw_bonds_add():
 	else:
 		length_unit_name = lang.red+'length unit not defined'+lang.reset
 	newbond.append(ui.inputscreen('        max length: ('+length_unit_name+"):",'float',0,eqmin=False,notblank=True,newscreen=False))
+	newbond.append(ui.inputscreen(' colour (0,0,0) <= (R,G,B) <= (255,255,255), blank for default:','intlist',0,255,number=3))
+	newbond.append(ui.option([
+		['d','default size',False,'0.01 x scale'],
+		['r','relative to 0.01 x scale',False,''],
+		['n','nm',False,'nanometre'],
+		['m','m',False,'metre'],
+		['a',lang.angstrom,False,'angstrom']
+		], 'Choose a bond size unit:'))
+	#if it's not the default, get a number
+	if newbond[4] != 'd':
+		newbond.append(ui.inputscreen('   size:','float',0,eqmin=False,notblank=True))
+	#if it is, just append False, we don't need a length
+	else:
+		newbond.append(False)
 	#load the old bonds
 	draw_data = load_current('draw')
 	if draw_data.has_key('bonds'):
@@ -2757,14 +2800,14 @@ def draw_bonds_delete():
 	draw_data = load_current('draw')
 	bonds = draw_data['bonds']
 	bonds_data = draw_bonds_table()
-	if len(constraints) > 1:
-		query = 'Delete which bond? (1-'+str(len(constraints))+', blank to cancel)'
+	if len(bonds) > 1:
+		query = 'Delete which bond? (1-'+str(len(bonds))+', blank to cancel)'
 	else:
 		query =  'There is only one bond. Enter 1 to confirm deletion, or leave blank to cancel:'
-	kill_me = ui.inputscreen(query,'int',1,len(constraints))
+	kill_me = ui.inputscreen(query,'int',1,len(bonds))
 	if kill_me is not False:
 		del constraints[kill_me-1]
-		update_value('dipole','constraints',constraints)
+		update_value('dipole','bonds',bonds)
 	return draw_bonds
 
 # dipole_bonds_edit
@@ -2777,8 +2820,10 @@ def draw_bonds_edit():
 	bonds = draw_data['bonds']
 	bonds_data = draw_bonds_table()
 	if len(bonds) > 1:
-		query = 'Edit which bond? (1-'+str(len(bonds))+')'
-		edit_me = ui.inputscreen(query,'int',1,len(bonds),text=bonds_data) - 1 #arrays start at zero
+		query = 'Edit which bond? (1-'+str(len(bonds))+', blank to cancel)'
+		edit_me = ui.inputscreen(query,'int',1,len(bonds),text=bonds_data,notblank=False) - 1 #arrays start at zero
+		if edit_me is False:
+			return draw_bonds
 	else:
 		edit_me = 0
 	#make readable the pre-existing constraints
@@ -2792,6 +2837,20 @@ def draw_bonds_edit():
 	else:
 		length_unit_name = lang.red+'length unit not defined'+lang.reset
 	bond.append(ui.inputscreen('         max length (blank for '+str(bonds[edit_me][2])+' '+length_unit_name+"):",'float',0,eqmin=True,notblank=False,newscreen=False))
+	bond.append(ui.inputscreen(' colour 0,0,0 <= R,G,B <= 255,255,255 or blank for default:','intlist',0,255,number=3,newscreen=False))
+	bond.append(ui.option([
+		['d','default size',False,'0.01 x scale'],
+		['r','relative to 0.01 x scale',False,''],
+		['n','nm',False,'nanometre'],
+		['m','m',False,'metre'],
+		['a',lang.angstrom,False,'angstrom']
+		], 'Choose a bond size unit:'))
+	#if it's not the default, get a number
+	if bond[4] != 'd':
+		bond.append(ui.inputscreen('   size:','float',0,eqmin=False,notblank=True))
+	#if it is, just append False, we don't need a length
+	else:
+		bond.append(False)
 	#set blank values to defaults
 	if bond[0] is False:
 		bond[0] = bonds[edit_me][0]
