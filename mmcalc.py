@@ -101,16 +101,21 @@ def json_custom_load(filename):
 	return complex_unserialise(stuff)
 
 def save_current(variablename,stuff):
-	json_custom_save(config.current_dir+'/'+variablename+'.json',stuff)
+	if os.path.exists(config.current_dir+'/'+'session'+'.json'):
+		allstuff = json_custom_load(config.current_dir+'/'+'session'+'.json')
+		allstuff[variablename] = stuff
+	else:
+		allstuff={variablename:stuff}
+	json_custom_save(config.current_dir+'/'+'session'+'.json',allstuff)
 
 def load_current(variablename):
 	#check if the file exists
-	if os.path.exists(config.current_dir+'/'+variablename+'.json'):
-		stuff = json_custom_load(config.current_dir+'/'+variablename+'.json')
-		return stuff
+	if os.path.exists(config.current_dir+'/'+'session'+'.json'):
+		stuff = json_custom_load(config.current_dir+'/'+'session'+'.json')
+		if stuff.has_key(variablename):
+			return stuff[variablename]
 	#if not, just return a blank dictionary
-	else:
-		return {}
+	return {}
 
 def save_output(dictname,filetypedesc,directory,suffix,returnto):
 	data = load_current(dictname)
