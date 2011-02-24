@@ -321,9 +321,17 @@ def freq_limits(r,f,fsmall,fbig,colour):
 	if f > fsmall and f < fbig:
 		pointer = v.box(pos=r, color=colour, length=0.1e-10,height=0.1e-10,width=0.1e-10)
 
-def click_catcher(scene):
-	mm = scene.mouse.getevent()
-	return mm
+def get_event(scene):
+	#delete all pre-existing events in the Visual Python cache
+	scene.mouse.events = 0
+	while scene.kb.keys:
+		s = scene.kb.getkey() #there appears to be no way to do this all in one go
+	#start the continual loop awaiting an event
+	while True:
+		if scene.mouse.events:
+			return {'type':"click",'event':scene.mouse.getclick()}
+		if scene.kb.keys: #is there a keyboard event waiting to be processed?
+			return {'type':"keypress",'event':scene.kb.getkey()}
 
 element_colours = {
 'H':(255.0/255,255.0/255,255.0/255),

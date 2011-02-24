@@ -915,11 +915,11 @@ def draw_magnetic_unit_cell():
 	'atoms_mu':didraw.vector_field(r_i,mu_i,0,0,'fadetoblack','proportional',scale)}
 	update_value('draw','scale',scale)
 	
-def draw_draw():
+def draw_draw(silent='False'):
 	global visual_window
 	global visual_window_contents
 	draw_data = load_current('draw')
-	L =  draw_data['L']
+	L = draw_data['L']
 	#turn the array of custom atoms into a usable dictionary
 	atom_custom = {}
 	if draw_data.has_key('atoms'):
@@ -955,19 +955,22 @@ def draw_draw():
 	visual_window.center = ((a_cart[0]*L[0]+a_cart[1]*L[1]+a_cart[2]*L[2])*0.5)
 	visual_window_contents = {}
 	if draw_data['unitcell']:
-		print 'Drawing unit cell boundary...'
+		if not silent:
+			ui.message('Drawing unit cell boundary...')
 		visual_window_contents['unitcell'] = didraw.unitcell_init(a_cart,scale)
 	if True: #you can't currently turn off atoms 999
-		print 'Drawing atoms...'
+		if not silent:
+			ui.message('Drawing atoms...')
 		visual_window_contents['atoms']= didraw.draw_atoms(r_i,names_i,q_i,mu_i,draw_data['atom_colours'],scale,atom_custom)
 	if draw_data['moments']:
-		print 'Drawing magnetic moments...'
+		if not silent:
+			ui.message('Drawing magnetic moments...')
 		visual_window_contents['atoms_mu'] = didraw.vector_field(r_i,mu_i,0,0,'fadetoblack','proportional',scale)
 	#if the field is visible, load it and draw it
 	if draw_data['field_visible']:
-		print 'Drawing dipole field of ',
 		title, values, error = csc.read(config.output_dir+'/'+draw_data['field_filename']+'-dipole-field.tsv') #998 do something with error?
-		print '\''+title+'\'...'
+		if not silent:
+			ui.message('Drawing dipole field of '+'\''+title+'\'...')
 		r_field,B_field,omega_field = csc_to_dipole_field(values)
 		omega_minmax = draw_data['omega_minmax']
 		omega_maxmax = 0. #the largest maximum specified
@@ -1003,25 +1006,28 @@ def draw_draw():
 		if do_draw:
 			visual_window_contents['dipole_field'] = didraw.vector_field(r_to_draw,B_to_draw,B_minmin,B_maxmax,draw_data['field_colours'],0.2,scale)
 	if draw_data['bonds_visible']:
-		print 'Drawing bonds...'
-		draw_data = generate_bonds()
-		bonds_to_draw = draw_data['generated_bonds']
-		bonds_to_draw_cart = np.zeros((len(bonds_to_draw),2,3))
-		bonds_to_draw_cart_and_attr = []
+		if not silent:
+			ui.message('Drawing bonds...')
+		bonds_to_draw = generate_bonds()
 		# though this uses the speed of numpy arrays, we can't do the whole thing with them because they force you to
 		#predefine a type, and don't allow you to change array dimensions. The problem with this is that some elements can
 		#be a vector, some a scalar, and some a boolean, eg colour can be [r,g,b] or False
-		for i in range(len(bonds_to_draw)):
-			bond_cart = np.zeros((2,3))
-			for j in range(2):
-				bond_cart[j] = difn.frac2abs(bonds_to_draw[i][j],a_cart)
-				bonds_to_draw_cart_and_attr.append([bond_cart[0],bond_cart[1],bonds_to_draw[i][2],bonds_to_draw[i][3],bonds_to_draw[i][4]])
-		visual_window_contents['bonds'] = didraw.bonds(bonds_to_draw_cart_and_attr,scale)
+		visual_window_contents['bonds'] = didraw.bonds(bonds_to_draw,scale)
+	# kill any atoms and bonds on death row
+	if draw_data.has_key('kill') and len(draw_data['kill']) > 0:
+		for death in draw_data['kill']:
+			if death[0]=='atom':
+				draw_kill_atom(death[1])
+			elif death[0]=='bond':
+				draw_kill_bond(death[1])
+			elif death[0]=='atom_mass' or death[0]=='bond_mass':
+				print death
+				draw_kill_mass_do(death)
 
 def draw_magnetic_unit_cell_from_crystal():
 	draw_magnetic_unit_cell()
 	return draw_crystal
-	
+
 def save_crystal():
 	return save_output('crystal','crystal structure',config.output_dir,'-crystal-structure',crystal)
 
@@ -2319,6 +2325,10 @@ def draw():
 		menu_data['stereo_3d'] = 'red-blue'
 	else:
 		menu_data['stereo_3d'] = 'error' #can't see why this would happen, but it's better than the program crashing
+	if draw_data.has_key('kill'):
+		menu_data['kill'] = str(len(draw_data['kill']))+" 'little accidents'"
+	else:
+		menu_data['kill'] = 'none...yet'
 	#the menu
 	menuoptions = [['s','scale',draw_scale,menu_data['scale']],
 	['c','atom colours',draw_atom_colours,menu_data['atom_colours']],
@@ -2335,7 +2345,8 @@ def draw():
 	menuoptions.append(['3','3D stereo',draw_3d,menu_data['stereo_3d']])
 	menuoptions.append(['v','save settings',draw_save,''])
 	menuoptions.append(['l','load settings',draw_load,''])
-	if visual_window is not None: #only provide this option if there's something to export
+	if visual_window is not None: #only provide these options if there's an existing window
+		menuoptions.append(['k','kill objects',draw_kill,menu_data['kill']])
 		menuoptions.append(['e','export image to POV-ray',draw_povexport,''])
 	menuoptions.append(['q','back to main menu',main_menu,''])
 	return ui.menu(menuoptions)
@@ -2662,36 +2673,27 @@ def generate_bonds():
 	crystal_data = load_current('crystal')
 	length_unit, length_unit_name = get_length_unit(crystal_data['length_unit'])
 	draw_data = load_current('draw')
-	bonds_onecell = []
+	a,alpha,a_cart,r_atoms,q_atoms,m_atoms,k_atoms,name_atoms = stored_unit_cell()
+	L = difn.mag_unit_cell_size(k_atoms)
+	atoms_r = difn.zero_if_close(r_atoms)
+	r_i,q_i,mu_i,names_i = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], L)
+	#then delete all atoms outside the draw size
+	r_i,q_i,mu_i,names_i = difn.make_crystal_trim_para(r_i,q_i,mu_i,names_i,a_cart,draw_data['L'])
+	bonds_output = []
 	for bond in draw_data['bonds']:
 		bonds_from = []
 		bonds_to = []
-		for atom in crystal_data['atoms']:
-			if atom[0] == bond[0]: #if the element = the from element specified
-				bonds_from.append([atom[1],atom[2],atom[3]]) #append the coordinates
-			if atom[0] == bond[1]: #if the element = the to element specified
-				bonds_to.append([atom[1],atom[2],atom[3]]) #append the coordinates
-		bonds_from_gen = difn.unit_cell_shared_atoms(sg.gen_unit_cell({'number':crystal_data['space_group'],'setting':crystal_data['space_group_setting']},bonds_from, False),False)
-		bonds_to_gen = difn.unit_cell_shared_atoms(sg.gen_unit_cell({'number':crystal_data['space_group'],'setting':crystal_data['space_group_setting']},bonds_to, False),False)
-		a_cart=difn.triclinic(np.array([crystal_data['a']*length_unit,crystal_data['b']*length_unit,crystal_data['c']*length_unit]),np.array([crystal_data['alpha'],crystal_data['beta'],crystal_data['gamma']]))
-		for bond_from in bonds_from_gen:
-			bond_from_cart = difn.frac2abs(bond_from,a_cart)
-			for bond_to in bonds_to_gen:
-				bond_to_cart = difn.frac2abs(bond_to,a_cart)
-				length = (bond_from_cart[0]-bond_to_cart[0])**2+(bond_from_cart[1]-bond_to_cart[1])**2+(bond_from_cart[2]-bond_to_cart[2])**2
-				if length !=0 and length < (bond[2]*length_unit)**2: #if the length is nonzero and not below the maximum specified
-					bonds_onecell.append([list(bond_from),list(bond_to),bond[3],bond[4],bond[5]]) #from, to, colour and radius
-	if draw_data['L'][0] > 1 or draw_data['L'][1] > 1 or draw_data['L'][2] > 1: # if we're drawing more than a crystal unit cell
-		bonds_output=[]
-		for i in range(draw_data['L'][0]):
-			for j in range(draw_data['L'][1]):
-				for k in range(draw_data['L'][2]):
-					for bond in bonds_onecell:
-						bonds_output.append([[bond[0][0]+i,bond[0][1]+j,bond[0][2]+k],[bond[1][0]+i,bond[1][1]+j,bond[1][2]+k],bond[2],bond[3],bond[4]]) #from, to, colour and radius
-		update_value('draw','generated_bonds',bonds_output)
-	else: #otherwise, we've already done this, so just update the value
-		update_value('draw','generated_bonds',bonds_onecell) 
-	return load_current('draw')
+		for i in range(len(r_i)):
+			if names_i[i] == bond[0]: #if the element = the from element specified
+				bonds_from.append(r_i[i]) #append the coordinates
+			if names_i[i] == bond[1]: #if the element = the to element specified
+				bonds_to.append(r_i[i]) #append the coordinates
+		for bond_from in bonds_from:
+			for bond_to in bonds_to:
+				length = (bond_from[0]-bond_to[0])**2+(bond_from[1]-bond_to[1])**2+(bond_from[2]-bond_to[2])**2
+				if length > 0 and length < (bond[2]*length_unit)**2: #if the length is nonzero and not above the maximum specified
+					bonds_output.append([bond_from,bond_to,bond[3],bond[4],bond[5]]) #from, to, colour and radius
+	return bonds_output
 
 def draw_bonds_yesno():
 	return option_toggle('draw','bonds_visible',draw_bonds)
@@ -2863,6 +2865,181 @@ def draw_bonds_edit():
 	bonds[edit_me] = bond
 	update_value('draw','bonds',bonds)
 	return draw_bonds
+
+def draw_kill():
+	draw_data = load_current('draw')
+	menu_data={}
+	if draw_data.has_key('kill'):
+		menu_data['kill'] = 'Currently storing '+str(len(draw_data['kill']))+' post-drawing kills.'+lang.newline
+	else:
+		menu_data['kill'] = 'No deaths reported.'
+	return ui.menu([
+	['k','kill',draw_kill_kill,'passes control to 3D window'],
+	['m','mass kill',draw_kill_mass,'passes control to 3D window'],
+	['r','reset',draw_kill_reset,''],
+	['q','back to visualisation menu',draw,''],
+	], 
+	menu_data['kill']
+	)
+	return draw
+
+#allows the user to kill atoms and bonds by clicking on them
+def draw_kill_kill():
+	global visual_window
+	global visual_window_contents
+	draw_data = load_current('draw')
+	ui.message_screen('Kill!!'+lang.newline+lang.newline+'Control has been passed to the 3D window. Click on atoms or bonds to delete them, and press q in the 3D window when done.'+lang.newline+lang.newline+'undo     ctrl-z'+lang.newline+'quit     q'+lang.newline+'reset    r')
+	if draw_data.has_key('kill'):
+		kill_list = draw_data['kill']
+	else:
+		kill_list=[]
+	#start the continual loop awaiting mouse info
+	while True:
+		event = didraw.get_event(visual_window)
+		if event['type'] == 'click':
+			if event['event'].pick is not None:
+				#go through the atoms to see if it's one of them
+				atomnumber = None
+				for i in range(len(visual_window_contents['atoms'])):
+					if event['event'].pick == visual_window_contents['atoms'][i]:
+						atomnumber = i
+						draw_kill_atom(i)
+						ui.message('kill atom #'+str(i))
+						kill_list.append(['atom',i])
+						break
+				#if it's not an atom
+				if atomnumber is None:
+					#if it's not an atom, maybe it was a bond
+					bondnumber = None
+					for i in range(len(visual_window_contents['bonds'])):
+						if event['event'].pick == visual_window_contents['bonds'][i]:
+							bondnumber = i
+							draw_kill_bond(i)
+							ui.message('kill bond #'+str(i))
+							kill_list.append(['bond',i])
+							break
+		if event['type'] == 'keypress': #is there a keyboard event waiting to be processed?
+			if event['event'] == 'ctrl+z':
+				#undo the last deletion by redrawing with n-1 instructions
+				kill_list = kill_list[:-1]
+				update_value('draw','kill',kill_list)
+				draw_draw(silent='True')
+			elif event['event'] == 'r':
+				draw_kill_reset(return_val=True)
+			elif event['event'] == 'q':
+				#update the list of atoms to be killed
+				update_value('draw','kill',kill_list)
+				#and return to the kill menu
+				return draw_kill
+
+#allows the user to kill atoms and bonds by clicking on them
+def draw_kill_mass():
+	global visual_window
+	global visual_window_contents
+	draw_data = load_current('draw')
+	ui.message_screen('Mass lill!!!!'+lang.newline+lang.newline+'Control has been passed to the 3D window. Click on atoms or bonds to delete all atoms and bonds touching it, and press q in the 3D window when done.'+lang.newline+lang.newline+'undo     ctrl-z'+lang.newline+'quit     q'+lang.newline+'reset    r')
+	if draw_data.has_key('kill'):
+		kill_list = draw_data['kill']
+	else:
+		kill_list=[]
+	#start the continual loop awaiting mouse info
+	while True:
+		event = didraw.get_event(visual_window)
+		if event['type'] == 'click':
+			if event['event'].pick is not None:
+				#go through the atoms to see if it's one of them
+				atomnumber = None
+				bondnumber = None
+				for i in range(len(visual_window_contents['atoms'])):
+					if event['event'].pick == visual_window_contents['atoms'][i]:
+						atomnumber = i
+						kill_list.append(['atom_mass',i])
+						break
+				#if it's not an atom
+				if atomnumber is None:
+					#if it's not an atom, maybe it was a bond
+					for i in range(len(visual_window_contents['bonds'])):
+						if event['event'].pick == visual_window_contents['bonds'][i]:
+							bondnumber = i
+							kill_list.append(['bond_mass',i])
+							break
+				if atomnumber is not None or bondnumber is not None:
+					draw_kill_mass_do(kill_list[-1])
+		if event['type'] == 'keypress': #is there a keyboard event waiting to be processed?
+			if event['event'] == 'ctrl+z':
+				#undo the last deletion by redrawing with n-1 instructions
+				kill_list = kill_list[-1]
+				update_value('draw','kill',kill_list)
+				draw_draw(silent='True')
+			elif event['event'] == 'r':
+				draw_kill_reset(return_val=True)
+			elif event['event'] == 'q':
+				#update the list of atoms to be killed
+				update_value('draw','kill',kill_list)
+				#and return to the kill menu
+				return draw_kill
+
+#deletes all kills
+#if no return_val is sent, go back to the kill menu
+#if one is set (eg True) just return that
+def draw_kill_reset(return_val=draw_kill):
+	draw_data = load_current('draw')
+	del draw_data['kill']
+	save_current('draw',draw_data)
+	draw_draw(silent=True)
+	return return_val
+
+def draw_kill_atom(atomnumber):
+	global visual_window_contents
+	#kill the atom
+	didraw.hide(visual_window_contents['atoms'][atomnumber])
+	#and kill off any associated bonds
+	for i in range(len(visual_window_contents['bonds'])):
+		#if either the bond's position is the same, or position + axis, ie the other end, is the same
+		#making a proper approx_equal for vectors would be good
+		if (difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[0],visual_window_contents['bonds'][i].pos[0]) and difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[1],visual_window_contents['bonds'][i].pos[1]) and difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[2],visual_window_contents['bonds'][i].pos[2])) or (difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[0],visual_window_contents['bonds'][i].pos[0]+visual_window_contents['bonds'][i].axis[0]) and difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[1],visual_window_contents['bonds'][i].pos[1]+visual_window_contents['bonds'][i].axis[1]) and difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[2],visual_window_contents['bonds'][i].pos[2]+visual_window_contents['bonds'][i].axis[2])):
+			didraw.hide(visual_window_contents['bonds'][i])
+	return True
+
+def draw_kill_bond(bondnumber):
+	global visual_window_contents
+	#kill the bond
+	didraw.hide(visual_window_contents['bonds'][bondnumber])
+	return True
+
+def draw_kill_mass_do(start):
+	global visual_window_contents
+	if start[0]=='bond_mass':
+		#both ends
+		newkillpos = [visual_window_contents['bonds'][start[1]].pos,visual_window_contents['bonds'][start[1]].pos+visual_window_contents['bonds'][start[1]].axis]
+		visual_window_contents['bonds'][start[1]].visible = False
+	elif start[0]=='atom_mass':
+		#just the centre
+		newkillpos = [visual_window_contents['atoms'][start[1]].pos]
+		visual_window_contents['atoms'][start[1]].visible = False
+	
+	while newkillpos != []:
+		killpos = newkillpos
+		newkillpos = []
+		for anelement in visual_window_contents['atoms']+visual_window_contents['bonds']: #make a massive list of atoms and bonds
+			for deathpos in killpos:
+				if anelement.__class__.__name__ is 'sphere' and anelement.visible:
+					if np.dot(anelement.pos-deathpos,anelement.pos-deathpos) < 1e-24:
+						anelement.visible = False
+				elif anelement.__class__.__name__ is 'cylinder' and anelement.visible:
+					if np.dot(anelement.pos-deathpos,anelement.pos-deathpos) < 1e-24 or np.dot(anelement.pos+anelement.axis-deathpos,anelement.pos+anelement.axis-deathpos) < 1e-24:
+						anelement.visible = False
+						pos_axis = [False,False] #stores whether there's new stuff to kill at the position of the object, its position plus its length, or both
+						for death in newkillpos:
+							if np.dot(anelement.pos-death,anelement.pos-death) < 1e-24:
+								pos_axis[0] = True
+							elif np.dot(anelement.pos+anelement.axis-death,anelement.pos+anelement.axis-death) < 1e-24:
+								pos_axis[1] = True
+						if not pos_axis[0]:
+							newkillpos.append(anelement.pos)
+						if not pos_axis[1]:
+							newkillpos.append(anelement.pos+anelement.axis)
+	return True
 
 def draw_3d():
 	a = ui.option([

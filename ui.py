@@ -103,6 +103,11 @@ def option(menu,notblank=False):
 	draw_menu(menu)
 	return get_user_option(menu,notblank)
 
+def message_screen(data):
+	clear()
+	title()
+	message(data)
+
 #eqmin and eqmax are True if a value is allowed to be equal to the respective bound, and False if it must be within those bounds
 def inputscreen(q,type='string',min=False,max=False,eqmin=True,eqmax=True,notblank=False,validate=False,text='',number=False,newscreen=True):
 	if newscreen:
