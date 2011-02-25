@@ -337,6 +337,16 @@ def import_cif():
 	else:
 		cifblock = cif_file[cifblock[0]]
 
+	# loop through a,b,c,alpah etc and get their values
+	nononnumchars = re.compile('[0-9.]+') #need to remove brackets if there are any to make it floatable
+	crystal_data['length_unit'] = 'n'
+	crystal_data['a'] = float(nononnumchars.match(cifblock['_cell_length_a']).group(0))/10. #divide by ten to turn angstroms (the standard) into nm
+	crystal_data['b'] = float(nononnumchars.match(cifblock['_cell_length_b']).group(0))/10.
+	crystal_data['c'] = float(nononnumchars.match(cifblock['_cell_length_c']).group(0))/10.
+	crystal_data['alpha'] = float(nononnumchars.match(cifblock['_cell_angle_alpha']).group(0))
+	crystal_data['beta'] = float(nononnumchars.match(cifblock['_cell_angle_beta']).group(0))
+	crystal_data['gamma'] = float(nononnumchars.match(cifblock['_cell_angle_gamma']).group(0))
+
 	space_group_valid = False
 	space_group_number = False
 	space_group_HM = False
@@ -356,7 +366,14 @@ def import_cif():
 	if space_group_valid is not False:
 		#turn it into a space group name and number
 		if len(space_group) > 1:
-			setting = choose_setting(space_group)
+			#if the choice is 'unique axis b' or 'unique axis c', the program can work this out on its own!
+			if space_group[0]['setting'] == 'unique axis b':
+				if crystal_data['beta'] != 90:
+					setting = 1
+				else: #if not, or if the test doesn't work, guess unique axis c
+					setting = 2
+			else:
+				setting = choose_setting(space_group)
 		else:
 			setting = 1
 		space_group = space_group[setting-1] # subtract 1 because Python indices start at 0
@@ -379,16 +396,6 @@ def import_cif():
 	crystal_data['space_group'] = space_group['number']
 	crystal_data['space_group_name'] = space_group['name']
 	crystal_data['space_group_setting'] = space_group['setting']
-	
-	# loop through a,b,c,alpah etc and get their values
-	nononnumchars = re.compile('[0-9.]+') #need to remove brackets if there are any to make it floatable
-	crystal_data['length_unit'] = 'n'
-	crystal_data['a'] = float(nononnumchars.match(cifblock['_cell_length_a']).group(0))/10. #divide by ten to turn angstroms (the standard) into nm
-	crystal_data['b'] = float(nononnumchars.match(cifblock['_cell_length_b']).group(0))/10.
-	crystal_data['c'] = float(nononnumchars.match(cifblock['_cell_length_c']).group(0))/10.
-	crystal_data['alpha'] = float(nononnumchars.match(cifblock['_cell_angle_alpha']).group(0))
-	crystal_data['beta'] = float(nononnumchars.match(cifblock['_cell_angle_beta']).group(0))
-	crystal_data['gamma'] = float(nononnumchars.match(cifblock['_cell_angle_gamma']).group(0))
 	
 	#ask user if they want elements or labels to be imported
 	#999
@@ -487,7 +494,7 @@ def choose_setting(spacegroups):
 		for spacegroup in spacegroups:
 			spacegroups_menu.append([str(i),spacegroup['setting'],False,''])
 			i+= 1
-		return np.int(ui.option(spacegroups_menu,True))
+		return np.int(ui.option(spacegroups_menu,True),'This space group ('+spacegroups[0]['name']+') has multiple settings. Please choose the appropriate one.')
 
 def space_group():
 	a = ui.inputscreen('Type a space group name or number:',validate=sg_validate)
@@ -2383,7 +2390,7 @@ def draw_initialise():
 	if not draw_data.has_key('field_colours'):
 		draw_data['field_colours'] = 'rainbow'
 	if not draw_data.has_key('bonds_visible'):
-		draw_data['bonds_visible'] = False
+		draw_data['bonds_visible'] = True
 	save_current('draw',draw_data)
 
 def draw():
@@ -2405,7 +2412,6 @@ def draw():
 	if draw_data.has_key('atoms'):
 		menu_data['atom_custom'] = ''
 		for atom in draw_data['atoms']:
-			print atom[0]
 			menu_data['atom_custom'] += atom[0]+', '
 		menu_data['atom_custom'] = menu_data['atom_custom'][:-2]
 	elif not draw_data.has_key('atoms') or len(draw_data['atoms']) ==0:
@@ -2437,6 +2443,14 @@ def draw():
 	else:
 		menu_data['field'] = 'off'
 	menu_data['unitcells'] = str(draw_data['L'])
+	if draw_data['bonds_visible'] and draw_data.has_key('bonds') and len(draw_data['bonds']) > 0:
+		menu_data['bonds'] = ''
+		for bond in draw_data['bonds']:
+			menu_data['bonds'] += bond[0]+'-'+bond[1]+', '
+		menu_data['bonds'] = menu_data['bonds'][:-2]
+	else:
+		menu_data['bonds'] = 'off'
+	menu_data['unitcells'] = str(draw_data['L'])
 	if draw_data['stereo_3d'] == 'n':
 		menu_data['stereo_3d'] = 'off'
 	elif draw_data['stereo_3d'] == 'r':
@@ -2460,7 +2474,7 @@ def draw():
 		menuoptions.append(['d','manual redraw',manual_redraw,''])
 	menuoptions.append(['u','unit cells',draw_unitcells,menu_data['unitcells']])
 	menuoptions.append(['f','field',draw_field,menu_data['field']])
-	menuoptions.append(['b','bonds',draw_bonds,''])
+	menuoptions.append(['b','bonds',draw_bonds,menu_data['bonds']])
 #	['r','field repeat',b,menu_data['b']],
 	menuoptions.append(['3','3D stereo',draw_3d,menu_data['stereo_3d']])
 	menuoptions.append(['v','save settings',draw_save,''])
@@ -2500,8 +2514,9 @@ def draw_unitcells():
 	elif a == 'm':
 		update_value('draw','L',list(L))
 	elif a == 'x':
-		userL = ui.inputscreen(' Enter T_x,T_y,T_z:','intlist',1,number=3)
-		update_value('draw','L',userL)
+		userL = ui.inputscreen(' Enter T_x,T_y,T_z (blank to cancel):','intlist',1,number=3)
+		if userL is not False:
+			update_value('draw','L',userL)
 	return draw
 
 def draw_scale():
@@ -2761,6 +2776,8 @@ def draw_field_yesno():
 # Draws bonds between atoms specified
 def draw_bonds():
 	draw_data = load_current('draw')
+	if draw_data['auto_redraw']:
+		draw_draw()
 	#if there are constraints
 	if draw_data.has_key('bonds') and len(draw_data['bonds']) != 0:
 		if draw_data['bonds_visible']:
@@ -2794,20 +2811,40 @@ def generate_bonds():
 	length_unit, length_unit_name = get_length_unit(crystal_data['length_unit'])
 	draw_data = load_current('draw')
 	a,alpha,a_cart,r_atoms,q_atoms,m_atoms,k_atoms,name_atoms = stored_unit_cell()
-	L = difn.mag_unit_cell_size(k_atoms)
+	L = draw_data['L']
 	atoms_r = difn.zero_if_close(r_atoms)
 	r_i,q_i,mu_i,names_i = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], L)
 	#then delete all atoms outside the draw size
-	r_i,q_i,mu_i,names_i = difn.make_crystal_trim_para(r_i,q_i,mu_i,names_i,a_cart,draw_data['L'])
+	r_i,q_i,mu_i,names_i = difn.make_crystal_trim_para(r_i,q_i,mu_i,names_i,a_cart,L)
+	elements_i = labels2elements(names_i)
 	bonds_output = []
 	for bond in draw_data['bonds']:
+		#if 'from' has no suffix eg it's Cu not Cu2, and is therefore just a general element
+		if bond[0] == labels2elements([bond[0]]): #hackishly, this is passed as a one-item list because labels2elements accepts lists 998 fix this!
+			from_general = True
+		else:
+			from_general = False
+		if bond[1] == labels2elements([bond[1]]):
+			to_general = True
+		else:
+			to_general = False
+		
 		bonds_from = []
 		bonds_to = []
 		for i in range(len(r_i)):
-			if names_i[i] == bond[0]: #if the element = the from element specified
-				bonds_from.append(r_i[i]) #append the coordinates
-			if names_i[i] == bond[1]: #if the element = the to element specified
-				bonds_to.append(r_i[i]) #append the coordinates
+			if from_general: #if the bond name has no numerical suffix eg Cu not Cu2
+				if elements_i[i] == bond[0]: #then check it against the elements with numerical suffices subtracted, ie Cu2 > Cu
+					bonds_from.append(r_i[i]) #append the coordinates
+			else: #otherwise
+				if names_i[i] == bond[0]: #test it against the full atom label eg Cu2
+					bonds_from.append(r_i[i])
+			if to_general:
+				if elements_i[i] == bond[1]:
+					bonds_to.append(r_i[i])
+			else: #otherwise
+				if names_i[i] == bond[1]:
+					bonds_to.append(r_i[i])
+		
 		for bond_from in bonds_from:
 			for bond_to in bonds_to:
 				length = (bond_from[0]-bond_to[0])**2+(bond_from[1]-bond_to[1])**2+(bond_from[2]-bond_to[2])**2
@@ -2928,8 +2965,8 @@ def draw_bonds_delete():
 		query =  'There is only one bond. Enter 1 to confirm deletion, or leave blank to cancel:'
 	kill_me = ui.inputscreen(query,'int',1,len(bonds))
 	if kill_me is not False:
-		del constraints[kill_me-1]
-		update_value('dipole','bonds',bonds)
+		del bonds[kill_me-1]
+		update_value('draw','bonds',bonds)
 	return draw_bonds
 
 # dipole_bonds_edit
@@ -3024,7 +3061,6 @@ def draw_kill_kill():
 					if event['event'].pick == visual_window_contents['atoms'][i]:
 						atomnumber = i
 						draw_kill_atom(i)
-						ui.message('kill atom #'+str(i))
 						kill_list.append(['atom',i])
 						break
 				#if it's not an atom
@@ -3035,7 +3071,6 @@ def draw_kill_kill():
 						if event['event'].pick == visual_window_contents['bonds'][i]:
 							bondnumber = i
 							draw_kill_bond(i)
-							ui.message('kill bond #'+str(i))
 							kill_list.append(['bond',i])
 							break
 		if event['type'] == 'keypress': #is there a keyboard event waiting to be processed?
@@ -3088,7 +3123,7 @@ def draw_kill_mass():
 		if event['type'] == 'keypress': #is there a keyboard event waiting to be processed?
 			if event['event'] == 'ctrl+z':
 				#undo the last deletion by redrawing with n-1 instructions
-				kill_list = kill_list[-1]
+				kill_list = kill_list[:-1]
 				update_value('draw','kill',kill_list)
 				draw_draw(silent='True')
 			elif event['event'] == 'r':
