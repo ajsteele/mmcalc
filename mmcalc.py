@@ -11,12 +11,12 @@
 import os
 import platform
 import time
-import re # regular expressions
+import re              # regular expressions
 
 # import mmcalc files
-import ui # user interface functions
-import langen as lang # the internationalisation file...change langen to a different filename, but always import as lang
-import config # configuration values
+import ui              # user interface functions
+import langen as lang  # the internationalisation file...change langen to a different filename, but always import as lang
+import config          # configuration values
 
 # numpy needs to be installed
 # 998 - should this try to import Numeric? Does that work too?
@@ -33,6 +33,13 @@ except ImportError:
 		import json
 	except:
 		ui.fatalerror(lang.err_json)
+
+# PyCifRW reads and writes CIF files, and is optional because it's tricky to install
+try:
+	import CifFile
+	cif_support = True
+except ImportError:
+	cif_support = False #this flag indicates that the import cif option should not be included on the crystal menu
 
 # these modules are all distributed with MmCalc so should just work...
 import sg
@@ -267,7 +274,7 @@ def crystal():
 	else:
 		menu_data['atoms'] = lang.red + 'not set' + lang.reset
 	#the menu
-	return ui.menu([
+	menu = [
 	['s','space group',space_group,menu_data['space_group']],
 	['u','length unit',length_unit,menu_data['length_unit']],
 	['a','a',a,menu_data['a']],
@@ -280,9 +287,122 @@ def crystal():
 	['m','magnetic properties',magnetic_properties_menu,''],
 	['d','draw crystal',draw_crystal,''],
 	['v','save crystal',save_crystal,''],
-	['l','load crystal',load_crystal,''],
-	['q','back to main menu',main_menu,'']
-	])
+	['l','load crystal',load_crystal,'']
+	]
+	if cif_support:
+		menu.append(['i','import CIF',import_cif,''])
+	menu.append(['q','back to main menu',main_menu,''])
+	return ui.menu(menu)
+
+def import_cif():
+	if ui.inputscreen('Do you wish to unload current crystal structure?','yn') == 'yes':
+		error = ''
+		while True:
+			filename = ui.inputscreen('Enter CIF filename to load:','str',notblank=True,text=error)
+			full_filename = config.output_dir+'/'+filename
+			if os.path.exists(full_filename):
+				break
+			else:
+				error = lang.red+'File '+full_filename+' does not exist.'+lang.reset
+	cif_file = CifFile.ReadCif(full_filename)
+	cifblock = []
+	for block in cif_file.items():
+		# if it's got the items we need in the block
+		block_has_all_keys = False #presume initially that it doesn't
+		if (cif_file[block[0]].has_key('_symmetry_space_group_number') or cif_file[block[0]].has_key('_symmetry_space_group_name_H-M')):
+			needed_keys = ['_atom_site_label','_cell_length_a','_cell_length_b','_cell_length_c','_cell_angle_alpha','_cell_angle_beta','_cell_angle_gamma']
+			block_has_all_keys = True
+			for k in needed_keys:
+				if not cif_file[block[0]].has_key(k):
+					block_has_all_keys = False
+					break
+		if block_has_all_keys:
+			cifblock.append(block[0])
+	
+	crystal_data = {}
+	# if there are no good blocks
+	if len(cifblock) == 0:
+		return ui.menu([
+		['q','back to crystal menu',crystal,'']
+		],'There are no suitable blocks in the CIF provided.')
+	# if there are multiple blocks which validate naively as above, offer the user a choice
+	elif len(cifblock) > 1:
+		options = []
+		for i in range(len(cifblock)):
+			options.append([str(i),cifblock[i],False,''])
+		options.append('There are several blocks of data in the CIF which seem to be appropriate. Please choose one.')
+		a = ui.option(options,notblank=True)
+		cifblock = cif_file[cifblock[i-1]]
+	# otherwise, no choice is necessary
+	else:
+		cifblock = cif_file[cifblock[0]]
+
+	space_group_valid = False
+	space_group_number = False
+	space_group_HM = False
+	# try for space group number: probably the safest way to extract the space group
+	if cifblock.has_key('_symmetry_space_group_number'):
+		#look up the space group
+		space_group_number = cifblock['_symmetry_space_group_number']
+		space_group_valid, error = sg_validate(space_group_number)
+		space_group = sg.get_sg(space_group_number)
+	#if there's no space group number, try the Hermann-Mauguin symbol
+	if space_group_valid is False and cifblock.has_key('_symmetry_space_group_name_H-M'):
+		# check the space group works
+		space_group_HM = cifblock['_symmetry_space_group_name_H-M']
+		space_group_valid, error = sg_validate(space_group_HM)
+		space_group = sg.get_sg(space_group_HM)
+	#if one of those worked and returned a valid space group
+	if space_group_valid is not False:
+		#turn it into a space group name and number
+		if len(space_group) > 1:
+			setting = choose_setting(space_group)
+		else:
+			setting = 1
+		space_group = space_group[setting-1] # subtract 1 because Python indices start at 0
+	else:
+		#throw an error and ask the user for help
+		sginfo = ''
+		if space_group_number is not False:
+			sginfo += 'Number: '+space_group_number+lang.newline
+		if space_group_HM is not False:
+			sginfo += 'Symbol: '+space_group_HM+lang.newline
+		space_group = ui.inputscreen('Type a space group name or number:',validate=sg_validate,notblank=True,text='The space group information in the CIF is not intelligible to me! Here is what the CIF says, can you please tell me what it means?'+lang.newline+lang.newline+sginfo)
+		#turn it into a space group name and number
+		space_group = sg.get_sg(space_group)
+		if len(a) > 1:
+			setting = choose_setting(space_group)
+		else:
+			setting = 1
+		space_group = space_group[setting-1] # subtract 1 because Python indices start at 0
+	
+	crystal_data['space_group'] = space_group['number']
+	crystal_data['space_group_name'] = space_group['name']
+	crystal_data['space_group_setting'] = space_group['setting']
+	
+	# loop through a,b,c,alpah etc and get their values
+	nononnumchars = re.compile('[0-9.]+') #need to remove brackets if there are any to make it floatable
+	crystal_data['length_unit'] = 'n'
+	crystal_data['a'] = float(nononnumchars.match(cifblock['_cell_length_a']).group(0))/10. #divide by ten to turn angstroms (the standard) into nm
+	crystal_data['b'] = float(nononnumchars.match(cifblock['_cell_length_b']).group(0))/10.
+	crystal_data['c'] = float(nononnumchars.match(cifblock['_cell_length_c']).group(0))/10.
+	crystal_data['alpha'] = float(nononnumchars.match(cifblock['_cell_angle_alpha']).group(0))
+	crystal_data['beta'] = float(nononnumchars.match(cifblock['_cell_angle_beta']).group(0))
+	crystal_data['gamma'] = float(nononnumchars.match(cifblock['_cell_angle_gamma']).group(0))
+	
+	#ask user if they want elements or labels to be imported
+	#999
+	
+	
+	# loop through the atoms and collect their info
+	crystal_data['atoms'] = []
+	for i in range(len(cifblock['_atom_site_label'])):
+		crystal_data['atoms'].append([cifblock['_atom_site_label'][i],float(nononnumchars.match(cifblock['_atom_site_fract_x'][i]).group(0)),float(nononnumchars.match(cifblock['_atom_site_fract_y'][i]).group(0)),float(nononnumchars.match(cifblock['_atom_site_fract_z'][i]).group(0)),0])
+		#set charge to zero because CIF file doesn't tell you that...
+	
+	save_current('crystal',crystal_data)
+	
+	return crystal
 
 def crystal_length(axis):
 	#998 more complex constraints based on space group?
@@ -346,7 +466,7 @@ def sg_validate(a):
 	try:
 		a = np.int(a)
 		int = True
-	except: 
+	except:
 		int = False
 	if int:
 		if a <= 230 and a > 0:
