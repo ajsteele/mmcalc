@@ -1,9 +1,13 @@
-1.1
+1.1beta2
  *** QUASI-BAYESIAN DIPOLE FIELD ANALYSIS! ***
  * It is now possible to constrain muon sites with respect to atomic positions.
  * Histogramming functions added.
+ *** DRAWING! ***
+ * Now automatically draws bonds between atoms of a certain type, or with a certain label. Customise colour and size.
+ * Kill menu to delete unwanted atoms and bonds, including 'mass kill' function.
  *** SWISHNESS! ***
- * Now just type 'mmcalc' at the Windows/Unix command line to start the program.
+ * Now just type 'mmcalc' at the Windows command line to start the program.
+ * IMPORT CRYSTAL DATA FROM CIF FILES! (requires Python module PyCifRW)
  * Label atoms with element names, and subsequent characters to distinguish atoms are ignored by the visualisation routines--so F1 appears as a green fluorine, but can be distinguished when specifying muon site constraints.
  *** UNDER THE BONNET/BUGFIXES! ***
  * numpy module renamed np in main program.

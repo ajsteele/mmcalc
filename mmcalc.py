@@ -1148,7 +1148,6 @@ def draw_draw(silent='False'):
 			elif death[0]=='bond':
 				draw_kill_bond(death[1])
 			elif death[0]=='atom_mass' or death[0]=='bond_mass':
-				print death
 				draw_kill_mass_do(death)
 
 def draw_magnetic_unit_cell_from_crystal():
@@ -3176,7 +3175,7 @@ def draw_kill_mass_do(start):
 	while newkillpos != []:
 		killpos = newkillpos
 		newkillpos = []
-		for anelement in visual_window_contents['atoms']+visual_window_contents['bonds']: #make a massive list of atoms and bonds
+		for anelement in visual_window.objects: #all visible in the visual window...a bit tacky
 			for deathpos in killpos:
 				if anelement.__class__.__name__ is 'sphere' and anelement.visible:
 					if np.dot(anelement.pos-deathpos,anelement.pos-deathpos) < 1e-24:
