@@ -8,7 +8,8 @@
  *** SWISHNESS! ***
  * Now just type 'mmcalc' at the Windows command line to start the program.
  * IMPORT CRYSTAL DATA FROM CIF FILES! (requires Python module PyCifRW)
- * Label atoms with element names, and subsequent characters to distinguish atoms are ignored by the visualisation routines--so F1 appears as a green fluorine, but can be distinguished when specifying muon site constraints.
+ * Label atoms with element names, and subsequent characters to distinguish atoms are ignored by the visualisation routines--so F1 appears as a green fluorine, but can be distinguished when specifying muon site constraints, adding bonds etc.
+ * On Windows and Linux, simply press a key, rather than key then return, to select a menu option.
  *** UNDER THE BONNET/BUGFIXES! ***
  * numpy module renamed np in main program.
  * Loop bug fixed--no longer loads every value from a CSC *.tsv value as many times as there are columns in that file! Achieved by removing a single erroneous tab.

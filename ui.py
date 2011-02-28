@@ -15,9 +15,37 @@ def clear():
 	
 def get_user_input(q):
 	return raw_input(q+' ')
-	
-def get_menu_input():
-	return raw_input(lang.chooseoption+' ')
+
+#in defining get_menu_input, we try first some OS-specific keyboard polling character grabbing things, and resort to the default input method as a last resort
+try: #first, try importing Unix modules
+	import sys, tty, termios
+	def get_menu_input():
+		fd = sys.stdin.fileno()
+		old_settings = termios.tcgetattr(fd)
+		try:
+		    tty.setraw(sys.stdin.fileno())
+		    ch = sys.stdin.read(1)
+		finally:
+		    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+		write(ch+lang.newline)
+		return ch
+except ImportError: #if that doesn't work, try Windows
+	try: #msvcrt is the Windows method of, amongst other things, polling the keyboard
+		import msvcrt
+		def get_menu_input():
+			write(lang.chooseoption+' ')
+			while msvcrt.kbhit():
+				msvcrt.getch()
+			ch = msvcrt.getch()
+			while ch in b'\x00\xe0':
+				msvcrt.getch()
+				ch = msvcrt.getch()
+			write(ch.decode()+lang.newline)
+			return ch.decode()
+	except ImportError:
+		#if neither of the above works, default to raw_input. This may happen on a Mac.
+		def get_menu_input():
+			return raw_input(lang.chooseoption_with_enter+' ')
 
 #word-wrap functon
 #cheers to http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/148061

@@ -84,6 +84,7 @@ version = 'v1.1'
 
 # ==menus== #
 chooseoption = 'Please choose an option by pressing the letter'
+chooseoption_with_enter = 'Please press a letter followed by enter'
 # main menu #
 
 # crystal menu #

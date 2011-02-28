@@ -1142,6 +1142,8 @@ def draw_draw(silent='False'):
 		visual_window_contents['bonds'] = didraw.bonds(bonds_to_draw,scale)
 	# kill any atoms and bonds on death row
 	if draw_data.has_key('kill') and len(draw_data['kill']) > 0:
+		if not silent:
+			ui.message('Killing unnecessary objects...')
 		for death in draw_data['kill']:
 			if death[0]=='atom':
 				draw_kill_atom(death[1])
@@ -3165,34 +3167,66 @@ def draw_kill_mass_do(start):
 	global visual_window_contents
 	if start[0]=='bond_mass':
 		#both ends
-		newkillpos = [visual_window_contents['bonds'][start[1]].pos,visual_window_contents['bonds'][start[1]].pos+visual_window_contents['bonds'][start[1]].axis]
+		newkillpos = np.array([visual_window_contents['bonds'][start[1]].pos,visual_window_contents['bonds'][start[1]].pos+visual_window_contents['bonds'][start[1]].axis])
 		visual_window_contents['bonds'][start[1]].visible = False
 	elif start[0]=='atom_mass':
 		#just the centre
-		newkillpos = [visual_window_contents['atoms'][start[1]].pos]
+		newkillpos = np.array([visual_window_contents['atoms'][start[1]].pos])
 		visual_window_contents['atoms'][start[1]].visible = False
 	
-	while newkillpos != []:
-		killpos = newkillpos
-		newkillpos = []
-		for anelement in visual_window.objects: #all visible in the visual window...a bit tacky
-			for deathpos in killpos:
-				if anelement.__class__.__name__ is 'sphere' and anelement.visible:
-					if np.dot(anelement.pos-deathpos,anelement.pos-deathpos) < 1e-24:
-						anelement.visible = False
-				elif anelement.__class__.__name__ is 'cylinder' and anelement.visible:
-					if np.dot(anelement.pos-deathpos,anelement.pos-deathpos) < 1e-24 or np.dot(anelement.pos+anelement.axis-deathpos,anelement.pos+anelement.axis-deathpos) < 1e-24:
-						anelement.visible = False
-						pos_axis = [False,False] #stores whether there's new stuff to kill at the position of the object, its position plus its length, or both
-						for death in newkillpos:
-							if np.dot(anelement.pos-death,anelement.pos-death) < 1e-24:
-								pos_axis[0] = True
-							elif np.dot(anelement.pos+anelement.axis-death,anelement.pos+anelement.axis-death) < 1e-24:
-								pos_axis[1] = True
-						if not pos_axis[0]:
-							newkillpos.append(anelement.pos)
-						if not pos_axis[1]:
-							newkillpos.append(anelement.pos+anelement.axis)
+
+	while len(newkillpos) > 0:
+		#select the type, position and axis of all visible objects in the visual window
+		visual_objects = visual_window.objects
+		visual_objects_type = [i.__class__.__name__ for i in visual_window.objects] #should probably be looped through dictionary of visual_window_contents, but never mind for now
+		visual_objects_position = np.array([i.pos for i in visual_window.objects])
+		visual_objects_axis = np.array([i.axis for i in visual_window.objects])
+		
+		#do objects of that type have an axis? (currently only cylinders and not-cylinders...)
+		visual_objects_hasaxis = (visual_objects_type == 'cylinder')
+		visual_objects_otherend = visual_objects_position + visual_objects_axis*visual_objects_hasaxis
+		
+		totaldeathlist = np.zeros(len(visual_objects),np.bool)
+		
+		for i in range(len(newkillpos)):
+			print newkillpos[i]
+			#are any of the objects at the killpos being searched for?
+			#np.allclose(visual_objects_position,newkillpos[i],rtol=0,atol=0)
+			deathlist = (np.allclose(visual_objects_position,newkillpos[i],rtol=0,atol=0)) or (np.allclose(visual_objects_otherend,newkillpos[i],rtol=0,atol=0))
+			print deathlist, np.where(deathlist)
+			time.sleep(5)
+
+			for j in np.where(deathlist): # hide 'em
+				visual_window.objects[j].visible = False
+			
+			#and add new casualties to the total death list this round
+			totaldeathlist = np.logical_or(totaldeathlist,deathlist)
+		
+		#construct a new list of positions to kill
+		newkillpos = np.append(np.compress(totaldeathlist,visual_objects_position,axis=0),np.compress(totaldeathlist,visual_objects_position,axis=0),axis=0)
+		
+		
+		
+		
+		#~ killpos = newkillpos
+		#~ newkillpos = []
+		#~ for deathpos in killpos:
+			#~ if anelement.__class__.__name__ is 'sphere' and anelement.visible:
+					#~ if np.dot(anelement.pos-deathpos,anelement.pos-deathpos) < 1e-24:
+						#~ anelement.visible = False
+				#~ elif anelement.__class__.__name__ is 'cylinder' and anelement.visible:
+					#~ if np.dot(anelement.pos-deathpos,anelement.pos-deathpos) < 1e-24 or np.dot(anelement.pos+anelement.axis-deathpos,anelement.pos+anelement.axis-deathpos) < 1e-24:
+						#~ anelement.visible = False
+						#~ pos_axis = [False,False] #stores whether there's new stuff to kill at the position of the object, its position plus its length, or both
+						#~ for death in newkillpos:
+							#~ if np.dot(anelement.pos-death,anelement.pos-death) < 1e-24:
+								#~ pos_axis[0] = True
+							#~ elif np.dot(anelement.pos+anelement.axis-death,anelement.pos+anelement.axis-death) < 1e-24:
+								#~ pos_axis[1] = True
+						#~ if not pos_axis[0]:
+							#~ newkillpos.append(anelement.pos)
+						#~ if not pos_axis[1]:
+							#~ newkillpos.append(anelement.pos+anelement.axis)
 	return True
 
 def draw_3d():
