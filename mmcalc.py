@@ -1039,7 +1039,7 @@ def draw_magnetic_unit_cell():
 	visual_window.center = ((a_cart[0]*L[0]+a_cart[1]*L[1]+a_cart[2]*L[2])*0.5)
 	visual_window_contents = {'unitcell':didraw.unitcell_init(a_cart,scale),
 	'atoms':didraw.draw_atoms(r_i,names_i,q_i,mu_i,'e',scale,{}), #draw completely standard, coloured by element etc, to avoid hiding points
-	'atoms_mu':didraw.vector_field(r_i,mu_i,0,0,'fadetoblack','proportional',scale)}
+	'atoms_mu':didraw.vector_field(r_i,mu_i,0,0,'white','proportional',scale)}
 	update_value('draw','scale',scale)
 	
 def draw_draw(silent='False'):
@@ -1078,6 +1078,9 @@ def draw_draw(silent='False'):
 	else: # = 'n', but turn it off under all other circumstances
 		stereo_3d = 'nostereo'
 	visual_window = didraw.initialise(stereo_3d)
+	# change the camera direction if necessary
+	if draw_data.has_key('camera_direction'):
+		draw_change_camera_direction(draw_data['camera_direction'],True)
 	visual_window.visible = True
 	visual_window.center = ((a_cart[0]*L[0]+a_cart[1]*L[1]+a_cart[2]*L[2])*0.5)
 	visual_window_contents = {}
@@ -1132,7 +1135,7 @@ def draw_draw(silent='False'):
 				do_draw = False #stop drawing the if user doesn't want computer-crippling-ness
 		if do_draw:
 			visual_window_contents['dipole_field'] = didraw.vector_field(r_to_draw,B_to_draw,B_minmin,B_maxmax,draw_data['field_colours'],0.2,scale)
-	if draw_data['bonds_visible']:
+	if draw_data.has_key('bonds') and draw_data['bonds_visible']:
 		if not silent:
 			ui.message('Drawing bonds...')
 		bonds_to_draw = generate_bonds()
@@ -2452,6 +2455,10 @@ def draw():
 	else:
 		menu_data['bonds'] = 'off'
 	menu_data['unitcells'] = str(draw_data['L'])
+	if draw_data.has_key('camera_direction'):
+		menu_data['draw_view'] = str(draw_data['camera_direction'])
+	else:
+		menu_data['draw_view'] = 'z'
 	if draw_data['stereo_3d'] == 'n':
 		menu_data['stereo_3d'] = 'off'
 	elif draw_data['stereo_3d'] == 'r':
@@ -2477,7 +2484,9 @@ def draw():
 	menuoptions.append(['f','field',draw_field,menu_data['field']])
 	menuoptions.append(['b','bonds',draw_bonds,menu_data['bonds']])
 #	['r','field repeat',b,menu_data['b']],
-	menuoptions.append(['3','3D stereo',draw_3d,menu_data['stereo_3d']])
+	if visual_window is not None: #only provide these options if there's an existing window
+		menuoptions.append(['w','view options',draw_view,menu_data['draw_view']])
+		menuoptions.append(['3','3D stereo',draw_3d,menu_data['stereo_3d']])
 	menuoptions.append(['v','save settings',draw_save,''])
 	menuoptions.append(['l','load settings',draw_load,''])
 	if visual_window is not None: #only provide these options if there's an existing window
@@ -2851,6 +2860,10 @@ def generate_bonds():
 				length = (bond_from[0]-bond_to[0])**2+(bond_from[1]-bond_to[1])**2+(bond_from[2]-bond_to[2])**2
 				if length > 0 and length < (bond[2]*length_unit)**2: #if the length is nonzero and not above the maximum specified
 					bonds_output.append([bond_from,bond_to,bond[3],bond[4],bond[5]]) #from, to, colour and radius
+	#~ #check for doubled-up bonds      998 add this
+	#~ for i in range(len(bonds_output)-1,-1,-1): # from (number of bonds)-1 to zero, ie array indices
+		#~ for j in range(len(bonds_output)-i-1,len(bonds_output)): # from where we are to the end
+			#~ if bonds_output[i][0] == bonds_output[j][0]
 	return bonds_output
 
 def draw_bonds_yesno():
@@ -3081,6 +3094,7 @@ def draw_kill_kill():
 				update_value('draw','kill',kill_list)
 				draw_draw(silent='True')
 			elif event['event'] == 'r':
+				kill_list=[]
 				draw_kill_reset(return_val=True)
 			elif event['event'] == 'q':
 				#update the list of atoms to be killed
@@ -3093,7 +3107,7 @@ def draw_kill_mass():
 	global visual_window
 	global visual_window_contents
 	draw_data = load_current('draw')
-	ui.message_screen('Mass lill!!!!'+lang.newline+lang.newline+'Control has been passed to the 3D window. Click on atoms or bonds to delete all atoms and bonds touching it, and press q in the 3D window when done.'+lang.newline+lang.newline+'undo     ctrl-z'+lang.newline+'quit     q'+lang.newline+'reset    r')
+	ui.message_screen('Mass kill!!!!'+lang.newline+lang.newline+'Control has been passed to the 3D window. Click on atoms or bonds to delete all atoms and bonds touching it, and press q in the 3D window when done.'+lang.newline+lang.newline+'undo     ctrl-z'+lang.newline+'quit     q'+lang.newline+'reset    r')
 	if draw_data.has_key('kill'):
 		kill_list = draw_data['kill']
 	else:
@@ -3124,10 +3138,12 @@ def draw_kill_mass():
 		if event['type'] == 'keypress': #is there a keyboard event waiting to be processed?
 			if event['event'] == 'ctrl+z':
 				#undo the last deletion by redrawing with n-1 instructions
+				#998 this is obviously a pretty slow way of doing it...would be better just to undo the last instruction
 				kill_list = kill_list[:-1]
 				update_value('draw','kill',kill_list)
 				draw_draw(silent='True')
 			elif event['event'] == 'r':
+				kill_list=[]
 				draw_kill_reset(return_val=True)
 			elif event['event'] == 'q':
 				#update the list of atoms to be killed
@@ -3140,8 +3156,9 @@ def draw_kill_mass():
 #if one is set (eg True) just return that
 def draw_kill_reset(return_val=draw_kill):
 	draw_data = load_current('draw')
-	del draw_data['kill']
-	save_current('draw',draw_data)
+	if draw_data.has_key('kill'):
+		del draw_data['kill']
+		save_current('draw',draw_data)
 	draw_draw(silent=True)
 	return return_val
 
@@ -3163,6 +3180,11 @@ def draw_kill_bond(bondnumber):
 	didraw.hide(visual_window_contents['bonds'][bondnumber])
 	return True
 
+def numpyfree_thing(a,b):
+	for i in range(len(a)):
+		a[i]*=b[i]
+	return a
+
 def draw_kill_mass_do(start):
 	global visual_window_contents
 	if start[0]=='bond_mass':
@@ -3174,60 +3196,82 @@ def draw_kill_mass_do(start):
 		newkillpos = np.array([visual_window_contents['atoms'][start[1]].pos])
 		visual_window_contents['atoms'][start[1]].visible = False
 	
-
+	# This section is done in terms of all objects in the visual window.
+	# This means it doesn't update the visual_window_contents array stored by MmCalc.
+	# This is not currently a problem, but may become one if more complex drawing
+	# functionality is implemented.
+	visual_objects = visual_window.objects
+	visual_objects_type = np.array([i.__class__.__name__ for i in visual_window.objects],np.str) #class names are box, cylinder etc
+	visual_objects_position = np.array([i.pos for i in visual_window.objects])
+	visual_objects_axis = np.array([i.axis for i in visual_window.objects])
+	
+	#~ for i in range(len(visual_objects_position)):
+		#~ print visual_objects_type[i],visual_objects_position[i],visual_objects_axis[i],visual_objects[i].visible
+	
+	# Do objects of that type have an axis? (currently only cylinders and not-cylinders...)
+	# Axis for objects without one is typically (0,0,1): this is problematic because most lengths
+	# in the visual window are in nm or so! Hence we need to remove those objects
+	visual_objects_hasaxis = (visual_objects_type == 'cylinder')
+	#print visual_objects_hasaxis.shape,visual_objects_position.shape,visual_objects_axis.shape
+	visual_objects_otherend = visual_objects_position + numpyfree_thing(visual_objects_axis,visual_objects_hasaxis) #multiplying by visual_objects_hasaxis simply sets that term to zero for objects which don't have one...so otherend = position. This causes some double-counting.
+	
+	
 	while len(newkillpos) > 0:
-		#select the type, position and axis of all visible objects in the visual window
-		visual_objects = visual_window.objects
-		visual_objects_type = [i.__class__.__name__ for i in visual_window.objects] #should probably be looped through dictionary of visual_window_contents, but never mind for now
-		visual_objects_position = np.array([i.pos for i in visual_window.objects])
-		visual_objects_axis = np.array([i.axis for i in visual_window.objects])
-		
-		#do objects of that type have an axis? (currently only cylinders and not-cylinders...)
-		visual_objects_hasaxis = (visual_objects_type == 'cylinder')
-		visual_objects_otherend = visual_objects_position + visual_objects_axis*visual_objects_hasaxis
-		
-		totaldeathlist = np.zeros(len(visual_objects),np.bool)
-		
+		print 'and again',newkillpos
 		for i in range(len(newkillpos)):
-			print newkillpos[i]
-			#are any of the objects at the killpos being searched for?
-			#np.allclose(visual_objects_position,newkillpos[i],rtol=0,atol=0)
-			deathlist = (np.allclose(visual_objects_position,newkillpos[i],rtol=0,atol=0)) or (np.allclose(visual_objects_otherend,newkillpos[i],rtol=0,atol=0))
-			print deathlist, np.where(deathlist)
-			time.sleep(5)
-
-			for j in np.where(deathlist): # hide 'em
-				visual_window.objects[j].visible = False
+			totaldeathlist = np.zeros(len(visual_objects),np.bool) #start all false--no-one has to die
+			#~ visual_objects_visible = [j.visible for j in visual_objects] #we only want to delete to objects which are still visible
+			#are any of the objects near the killpos being searched for and still visible?
+			deathlist = np.logical_or(np.abs((visual_objects_position-newkillpos[i]).sum(axis=1)) < 1e-13,np.abs((visual_objects_otherend-newkillpos[i]).sum(axis=1)) < 1e-13)
+			#~ deathlist = np.logical_and(np.logical_or(np.abs((visual_objects_position-newkillpos[i]).sum(axis=1)) < 1e-13,np.abs((visual_objects_otherend-newkillpos[i]).sum(axis=1)) < 1e-13),visual_objects_visible)
+			
+			
+			#hide those marked for deletion
+			for j in np.nonzero(deathlist)[0]: #nonzero returns an n-tuple for n-dimensional arrays; ours is only one long, so choose the first (and only) element
+				print j
+				visual_objects[j].visible = False
 			
 			#and add new casualties to the total death list this round
 			totaldeathlist = np.logical_or(totaldeathlist,deathlist)
 		
 		#construct a new list of positions to kill
-		newkillpos = np.append(np.compress(totaldeathlist,visual_objects_position,axis=0),np.compress(totaldeathlist,visual_objects_position,axis=0),axis=0)
-		
-		
-		
-		
-		#~ killpos = newkillpos
-		#~ newkillpos = []
-		#~ for deathpos in killpos:
-			#~ if anelement.__class__.__name__ is 'sphere' and anelement.visible:
-					#~ if np.dot(anelement.pos-deathpos,anelement.pos-deathpos) < 1e-24:
-						#~ anelement.visible = False
-				#~ elif anelement.__class__.__name__ is 'cylinder' and anelement.visible:
-					#~ if np.dot(anelement.pos-deathpos,anelement.pos-deathpos) < 1e-24 or np.dot(anelement.pos+anelement.axis-deathpos,anelement.pos+anelement.axis-deathpos) < 1e-24:
-						#~ anelement.visible = False
-						#~ pos_axis = [False,False] #stores whether there's new stuff to kill at the position of the object, its position plus its length, or both
-						#~ for death in newkillpos:
-							#~ if np.dot(anelement.pos-death,anelement.pos-death) < 1e-24:
-								#~ pos_axis[0] = True
-							#~ elif np.dot(anelement.pos+anelement.axis-death,anelement.pos+anelement.axis-death) < 1e-24:
-								#~ pos_axis[1] = True
-						#~ if not pos_axis[0]:
-							#~ newkillpos.append(anelement.pos)
-						#~ if not pos_axis[1]:
-							#~ newkillpos.append(anelement.pos+anelement.axis)
+		newkillpos = np.append(np.compress(totaldeathlist,visual_objects_position,axis=0),np.compress(totaldeathlist,visual_objects_otherend,axis=0))
+	print 'done'
 	return True
+
+#at the moment, this menu just has simple camera direction settings
+def draw_view():
+	global visual_window
+	a = ui.option([
+	['x','Cartesian x',False,''],
+	['y','Cartesian y',False,''],
+	['z','Cartesian z',False,'default']
+	],'Choose a direction for the camera to look along')
+	#if it's just a letter, update the value
+	if a == 'x' or a == 'y' or a == 'z':
+		update_value('draw','camera_direction',a)
+		draw_change_camera_direction(a,draw)
+	return draw
+
+def draw_change_camera_direction(direction,returnto):
+	#if it's a list, it's a custom direction and it's already defined
+	if direction.__class__.__name__ == 'list':
+		view = direction
+	elif direction == 'x':
+		view = [-1,0,0]
+		sky  = [0,0,1]
+	elif direction == 'y':
+		view = [0,-1,0]
+		sky  = [1,0,0]
+	elif direction == 'z': #the default...
+		view = [0,0,-1]
+		sky  = [0,1,0]
+	#and rotate it to the chosen direction with the chosen up vector
+	global visual_window
+	visual_window.forward = view
+	visual_window.up      = sky
+	
+	return returnto
 
 def draw_3d():
 	a = ui.option([

@@ -301,7 +301,7 @@ def vector_field(r,vec,vmin,vmax,colourtype,lengthtype,scale):
 		if lengthtype.__class__.__name__ == 'float' or lengthtype.__class__.__name__ == 'int':
 			length = np.float(lengthtype)
 		elif lengthtype == 'proportional':
-			length = val
+			length = modv/vmax #we never want the arrows to have zero length, so effectively set vmin=0 whatever happens
 		else:
 			length = 1
 		if length != 0:
