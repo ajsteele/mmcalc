@@ -1181,6 +1181,11 @@ def dipole():
 			menu_data['points'] = 'grid; n_a='+str(dipole_data['n_a'])+', n_b='+str(dipole_data['n_b'])+', n_c='+str(dipole_data['n_c'])
 		elif dipole_data['pointgen'] == 'm':
 			menu_data['points'] = 'Monte Carlo; n='+str(dipole_data['n_monte'])
+		elif dipole_data['pointgen'] == 's':
+			if dipole_data.has_key('points'):
+				menu_data['points'] = str(len(dipole_data['points']))+' specified manually'
+			else:
+				menu_data['points'] = ''
 	else:
 		menu_data['points'] = lang.red+'not set'+lang.reset
 	if dipole_data.has_key('constraints') and len(dipole_data['constraints']) > 0 and crystal_data.has_key('length_unit'):
@@ -1196,9 +1201,9 @@ def dipole():
 	['p','points',dipole_points,menu_data['points']],
 	['m','muon site constraints',dipole_constraints,menu_data['constraints']],
 	['e','evaluate dipole field by direct summation',calculate_dipole,''],
-#	['s','symmetry eqv',dipole_symmetry_eqv,''], #999
+#	['s','symmetry eqv',dipole_symmetry_eqv,''], #998
 	['d','draw dipole field',draw_dipole,''],
-#	['f','draw frequencies',draw_freq,''], #999
+#	['f','draw frequencies',draw_freq,''], #998
 	['h','histogram of frequencies',histo_freq,''],
 	['q','back to main menu',main_menu,'']
 	])
@@ -1351,31 +1356,112 @@ def dipole_vcrystal_size():
 # --------------------------
 # A user input function on the dipole menu
 # ---
+
 # Obtain both the method of points generation (on a grid, or Monte Carlo), and how many points to use
 # 998 - also specify how many unit cells here? eg magnetic, crystal, other...
-def dipole_points():
+#straight_to_point allows jumping straight to the specify points menu if that's the user's method of point selection
+#it's set to false when you request this dipole_points menu from within specify_points so you get to select a new option...
+def dipole_points(straight_to_point = True): 
 	dipole_data = load_current('dipole')
-	pointgen = ui.option([
-			['g','grid',False,''],
-			['m','Monte Carlo',False,'']
-			], 'Choose a method of point generation:')
-	update_value('dipole','pointgen',pointgen)
-	if pointgen == 'g':
-			for axis in ['a','b','c']:
-				if dipole_data.has_key('n_'+axis):
-					a = ui.inputscreen('Number of points on the '+axis+'-axis (blank for '+str(dipole_data['n_'+axis])+'):','int',0,eqmin=False,notblank=False)
-				else:
-					a = ui.inputscreen('Number of points on the '+axis+'-axis:','int',0,eqmin=False,notblank=True)
-				if a is not False:
-					update_value('dipole','n_'+axis,a)
-	elif pointgen == 'm':
-		if dipole_data.has_key('n_monte'):
-			a = ui.inputscreen('Number of points to evaluate (blank for '+str(dipole_data['n_monte'])+'):','int',0,eqmin=False,notblank=False)
-		else:
-			a = ui.inputscreen('Number of points to evaluate:','int',0,eqmin=False,notblank=True)
-		if a is not False:
-			update_value('dipole','n_monte',a)
+	# if it's unset, or it's set to grid or MC, offer up the conventional set of options
+	if not straight_to_point or not dipole_data.has_key('pointgen') or dipole_data['pointgen'] == 'g' or dipole_data['pointgen'] == 'm':
+		pointgen = ui.option([
+				['g','grid',False,''],
+				['m','Monte Carlo',False,''],
+				['s','specify single points',False,'']
+				], 'Choose a method of point generation:')
+		update_value('dipole','pointgen',pointgen)
+		if pointgen == 'g':
+				for axis in ['a','b','c']:
+					if dipole_data.has_key('n_'+axis):
+						a = ui.inputscreen('Number of points on the '+axis+'-axis (blank for '+str(dipole_data['n_'+axis])+'):','int',0,eqmin=False,notblank=False)
+					else:
+						a = ui.inputscreen('Number of points on the '+axis+'-axis:','int',0,eqmin=False,notblank=True)
+					if a is not False:
+						update_value('dipole','n_'+axis,a)
+		elif pointgen == 'm':
+			if dipole_data.has_key('n_monte'):
+				a = ui.inputscreen('Number of points to evaluate (blank for '+str(dipole_data['n_monte'])+'):','int',0,eqmin=False,notblank=False)
+			else:
+				a = ui.inputscreen('Number of points to evaluate:','int',0,eqmin=False,notblank=True)
+			if a is not False:
+				update_value('dipole','n_monte',a)
+		# if they want to specify points, take them there
+		elif pointgen == 's':
+			return dipole_points_specify
+	# if they've specified points, take them there by default
+	else:
+		return dipole_points_specify
 	return dipole
+
+# this is a kludge to call dipole_points with False from within the menus in dipole_points_specify
+# putting dipole_points(False) into the menu executes the function
+# 998 is there a better way?
+def dipole_points_notstraight():
+	return dipole_points(False)
+
+def dipole_points_table():
+	#load (and print out) any already-existent atom data
+	dipole_data = load_current('dipole')
+	if dipole_data.has_key('points'):
+		points = dipole_data['points']
+		points_table_array = []
+		points_table_array.append(['#','x','y','z'])
+		i = 1
+		for point in points:
+			point_row = []
+			point_row.append(str(i))
+			point_row.append(str(point[0])) # x
+			point_row.append(str(point[1])) # y
+			point_row.append(str(point[2])) # z
+			points_table_array.append(point_row)
+			i += 1
+		return ui.table(points_table_array)
+	else:
+		return ''
+
+def dipole_points_specify():
+	dipole_data = load_current('dipole')
+	#if there are atoms
+	if dipole_data.has_key('points') and len(dipole_data['points']) != 0:
+		return ui.menu([
+		['a','add point',add_point,''],
+		['d','delete point',delete_point,''],
+		['x','generate points by different method',dipole_points_notstraight,''],
+		['q','back to dipole menu',dipole,'']
+		],dipole_points_table())
+	#if none has been set yet
+	else:
+		return ui.menu([
+		['a','add point',add_point,''],
+		['x','generate points by different method',dipole_points_notstraight,'']
+		])
+
+def add_point():
+	newpoint = ui.inputscreen('  x, y, z (fractional coordinates, separated by commas):','floatlist',notblank=True,number=3)
+	#load the old atoms
+	dipole_data = load_current('dipole')
+	if dipole_data.has_key('points'):
+		points = dipole_data['points']
+	else:
+		points = []
+	points.append(newpoint)
+	update_value('dipole','points',points)
+	return dipole_points_specify
+
+def delete_point():
+	dipole_data = load_current('dipole')
+	points = dipole_data['points']
+	points_data = dipole_points_table()
+	if len(points) > 1:
+		query = 'Delete which point? (1-'+str(len(points))+', blank to cancel)'
+	else:
+		query =  'There is only one point. Enter 1 to confirm deletion, or leave blank to cancel:'
+	kill_me = ui.inputscreen(query,'int',1,len(points))
+	if kill_me is not False:
+		del points[kill_me-1]
+		update_value('dipole','points',points)
+	return dipole_points_specify
 
 # generate_grid
 # --------------------------
@@ -1749,7 +1835,7 @@ def calculate_dipole():
 	dipole_data = load_current('dipole')
 	crystal_data = load_current('crystal')
 	# is it either set to generate points on a grid, and are the grid dimensions set, or is it set to Monte Carlo with a specified n?
-	if dipole_data.has_key('r_sphere') and crystal_data.has_key('length_unit') and ((dipole_data.has_key('pointgen') and dipole_data['pointgen'] == 'g' and dipole_data.has_key('n_a') and dipole_data.has_key('n_b') and dipole_data.has_key('n_c')) or (dipole_data.has_key('pointgen') and dipole_data['pointgen'] == 'm' and dipole_data.has_key('n_monte'))):
+	if dipole_data.has_key('r_sphere') and crystal_data.has_key('length_unit') and ((dipole_data.has_key('pointgen') and dipole_data['pointgen'] == 'g' and dipole_data.has_key('n_a') and dipole_data.has_key('n_b') and dipole_data.has_key('n_c')) or (dipole_data.has_key('pointgen') and dipole_data['pointgen'] == 'm' and dipole_data.has_key('n_monte'))) or (dipole_data.has_key('pointgen') and dipole_data['pointgen'] == 's'):
 		#if so, calculate!
 		#start the v_meta metadata dictionary
 		v_meta = {'title':ui.inputscreen('Please enter a title for your output files:','str',notblank=True)}
@@ -1813,6 +1899,48 @@ def calculate_dipole():
 			#generate n_pos_at_a_time random positions...see config.py
 			r_frac,r_dip = generate_grid(a_cart,L,n_grid)
 			#throw some away, if necessary
+			if constraints is not False:
+				r_frac,r_dip = apply_constraints(r_frac,r_dip,constraint_r,constraint_min,constraint_max)
+			# if there are no remaining points after applying constraints
+			if r_frac.shape[1] == 0:
+				return ui.menu([
+				['q','back to dipole menu',dipole,'']
+				],lang.err+lang.err_constraints_too_harsh)
+			points_to_try = len(r_dip[0])
+			t_gen += time.clock() - t_gen_start
+			t_dip_start = time.clock()
+			for i in range(points_to_try):
+				B = difast.calculate_dipole(np.reshape(r_dip[:,i],(3,1)), r_fast, mu_fast)
+				omega = difn.gyro(B)
+				#only write to the file if the result is not invalid, caused by being on top of a moment
+				if not np.isnan(omega):
+					csc.append([r_frac[0,i],r_frac[1,i],r_frac[2,i],r_dip[0,i],r_dip[1,i],r_dip[2,i],B[0],B[1],B[2],omega],file)
+				if (i+1)%10000 == 0:
+					#every so often, print out how far through we are
+					frac_done = np.float(i)/points_to_try
+					t_elapsed = time.clock()-t_start
+					t_remain  = (1-frac_done)*t_elapsed/frac_done
+					print str(round(frac_done*100,1))+'% done in '+ui.s_to_hms(t_elapsed)+'...approximately '+ui.s_to_hms(t_remain)+' remaining'
+			t_dip += time.clock() - t_dip_start
+			t_elapsed = time.clock()-t_start
+			csc.close(file)
+			final_message = 'Calculation completed in '+ui.s_to_hms(t_elapsed)
+		#if the points come pre-specified
+		elif dipole_data['pointgen'] == 's':
+			csc_properties = ['rho_x','rho_y','rho_z','r_x','r_y','r_z','B_x','B_y','B_z','omega']
+			d_meta = {'title': v_meta['title'], 'pointgen': 'manual', 'vcrystal': v_filename+'-vcrystal.tsv'}
+			if constraints is not False:
+				d_meta['constraints'] = v_meta['constraints']
+			file = csc.begin(d_meta,csc_properties,dipole_field_filename)
+			t_gen_start = time.clock()
+			#generate n_pos_at_a_time random positions...see config.py
+			r_frac = np.array(dipole_data['points'])
+			r_dip  = np.empty(r_frac.shape,np.float)
+			for i in range(len(r_frac)): #998 could probably do with with numpy tensordot or something to speed it up
+				r_dip[i] = difn.frac2abs(r_frac[i],a_cart)
+			#throw some away, if necessary
+			r_frac = difast.reshape_array(r_frac)
+			r_dip  = difast.reshape_array(r_dip)
 			if constraints is not False:
 				r_frac,r_dip = apply_constraints(r_frac,r_dip,constraint_r,constraint_min,constraint_max)
 			# if there are no remaining points after applying constraints
