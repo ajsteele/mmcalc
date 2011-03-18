@@ -23,10 +23,10 @@ try: #first, try importing Unix modules
 		fd = sys.stdin.fileno()
 		old_settings = termios.tcgetattr(fd)
 		try:
-		    tty.setraw(sys.stdin.fileno())
-		    ch = sys.stdin.read(1)
+			tty.setraw(sys.stdin.fileno())
+			ch = sys.stdin.read(1)
 		finally:
-		    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+			termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 		write(ch+lang.newline)
 		return ch
 except ImportError: #if that doesn't work, try Windows
@@ -272,12 +272,12 @@ def info(info):
 def table(data):
 	#make sure they're strings
 	#998 catch if data is a different width on the way down...
-	cellwidth = np.floor((width-1)/len(data[0]))
+	cellwidth = np.int((width-1)/len(data[0]))
 	table = ''
 	for row in data:
 		for cell in row:
 			if len(cell) >= cellwidth:
-				table += cell[:cellwidth-len(ellipsis_short)-1]+ellipsis_short+' '
+				table += cell[:(cellwidth-len(lang.ellipsis_short)-1)]+lang.ellipsis_short+' '
 			else:
 				table += cell+' '*(cellwidth-len(cell))
 		table += lang.newline
