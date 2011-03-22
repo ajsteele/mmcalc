@@ -32,24 +32,12 @@ newline = '\n' #Unix newline
 
 clearcommand = 'clear' #system command to clear the console
 
-# ==Windows== #
-# (a few changes are necessary because Windows command prompt doesn't support UTF-8 text or ANSI text formatting commands)
+# ==Windows==
+# a few changes are necessary because Windows command prompt doesn't support UTF-8
+# text or ANSI text formatting commands
 import platform
 import config
-if platform.system() == 'Windows' or config.unicode == False:
-	# ==special characters== #
-	# (paraphrase unicode issues)
-	alpha = 'alpha'
-	angstrom = 'angstroms'
-	beta = 'beta'
-	degree = ' degrees' #starts with a space because degree sign goes directly adjacent to value
-	ellipsis_short = '...'
-	gamma = 'gamma'
-	infinity = 'infinity'
-	mu = 'mu'
-	mu2 = 'm'
-	pi = 'pi'
-	
+if platform.system() == 'Windows':
 	# ==formatting== #
 	# (discard ANSI formatting commands)
 	bold = ''
@@ -65,6 +53,21 @@ if platform.system() == 'Windows' or config.unicode == False:
 	
 	newline = '\r\n' #Windows CR/LF newline
 	clearcommand = 'cls' #system command to clear the console
+
+# UTF-8 support can be disabled even on Unix, so deal with those commands separately
+if platform.system() == 'Windows' or config.unicode == False:
+	# ==special characters== #
+	# (paraphrase unicode issues)
+	alpha = 'alpha'
+	angstrom = 'angstroms'
+	beta = 'beta'
+	degree = ' degrees' #starts with a space because degree sign goes directly adjacent to value
+	ellipsis_short = '...'
+	gamma = 'gamma'
+	infinity = 'infinity'
+	mu = 'mu'
+	mu2 = 'm'
+	pi = 'pi'
 
 # ==startup== #
 err_numpy = "Error importing Numeric Python module. Please make sure the module 'numpy' is installed. See http://numpy.scipy.org/"
