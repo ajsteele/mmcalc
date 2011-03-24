@@ -2008,7 +2008,7 @@ def calculate_dipole():
 				print str(round(frac_done*100,1))+'% done in '+ui.s_to_hms(t_elapsed)+'...approximately '+ui.s_to_hms(t_remain)+' remaining'
 		csc.close(file)
 		final_message = 'Calculation completed in '+ui.s_to_hms(t_elapsed)
-		if config.verbose:
+		if config.verbose and t_elapsed > 0: #prevents divide by zero crash
 			#verbose output also displays the proportion of time spent generating the random positions versus calculating dipole fields
 			final_message += ' ('+ui.s_to_hms(t_gen)+' ['+str(round(t_gen/t_elapsed*100,1))+'%] spent generating positions, '+ui.s_to_hms(t_dip)+' ['+str(round(t_dip/t_elapsed*100,1))+'%] spent calculating dipole fields)'
 	else:
@@ -3381,6 +3381,8 @@ def draw_view():
 		draw_change_camera_direction(a,draw)
 	return draw
 
+# Visual defines the 'forward' and 'up' properties of the visual window thus:
+# http://vpython.org/contents/docs/visual/display.html
 def draw_change_camera_direction(direction,returnto):
 	#if it's a list, it's a custom direction and it's already defined
 	if direction.__class__.__name__ == 'list':
