@@ -842,8 +842,6 @@ def edit_atom_m_and_k():
 	crystal_data = load_current('crystal')
 	generated_atoms_properties = crystal_data['generated_atoms_properties']
 	generated_atoms = crystal_data['generated_atoms']
-	for i in range(len(generated_atoms)):
-		print i,generated_atoms[i]
 	m = crystal_data['m']
 	k = crystal_data['k']
 	#if there's more than one atom, allow the user to choose it
@@ -1220,11 +1218,9 @@ def generate_random_position(r,a,tolerance):
 	while not(sorted):
 		sorted = True
 		r_test = np.random.rand()*a[0]+np.random.rand()*a[1]+np.random.rand()*a[2]
-		#print r_test
 		for i in range(len(r)):
 			#if it's too close to an atom, send it round again
 			if np.dot((r_test-r[i]),(r_test-r[i])) < tolerance2:
-				#print i,r[i]
 				sorted = False
 				break
 	return r_test
@@ -3230,12 +3226,19 @@ def draw_kill_kill():
 				#and return to the kill menu
 				return draw_kill
 
-#allows the user to kill atoms and bonds by clicking on them
+# draw_kill_mass
+# --------------------------
+# A function allowing users to delete atoms and bonds en masse.
+# Transfers control from the terminal window to the visual window, allowing the user to click on
+# the objects that they wish to delete. Clicking on an object calls draw_kill_mass_do,
+# which cycles through the visual window contents looking for adjoining content to delete.
+# This function only really makes sense when bonds are present, because only bonds join
+# atoms and allow 
 def draw_kill_mass():
 	global visual_window
 	global visual_window_contents
 	draw_data = load_current('draw')
-	ui.message_screen('Mass kill!!!!'+lang.newline+lang.newline+'Control has been passed to the 3D window. Click on atoms or bonds to delete all atoms and bonds touching it, and press q in the 3D window when done.'+lang.newline+lang.newline+'undo     ctrl-z'+lang.newline+'quit     q'+lang.newline+'reset    r')
+	ui.message_screen('Mass kill!!!!'+lang.newline*2+'Control has been passed to the 3D window. Click on atoms or bonds to delete all atoms and bonds touching it, and press q in the 3D window when done.'+lang.newline+lang.newline+'undo     ctrl-z'+lang.newline+'quit     q'+lang.newline+'reset    r')
 	if draw_data.has_key('kill'):
 		kill_list = draw_data['kill']
 	else:
@@ -3256,11 +3259,14 @@ def draw_kill_mass():
 				#if it's not an atom
 				if atomnumber is None:
 					#if it's not an atom, maybe it was a bond
-					for i in range(len(visual_window_contents['bonds'])):
-						if event['event'].pick == visual_window_contents['bonds'][i]:
-							bondnumber = i
-							kill_list.append(['bond_mass',i])
-							break
+					#are there any bonds?
+					if visual_window_contents.has_key('bonds') and len(visual_window_contents['bonds']) > 0:
+						#if so, loop through them to check
+						for i in range(len(visual_window_contents['bonds'])):
+							if event['event'].pick == visual_window_contents['bonds'][i]:
+								bondnumber = i
+								kill_list.append(['bond_mass',i])
+								break
 				if atomnumber is not None or bondnumber is not None:
 					draw_kill_mass_do(kill_list[-1])
 		if event['type'] == 'keypress': #is there a keyboard event waiting to be processed?
@@ -3295,11 +3301,12 @@ def draw_kill_atom(atomnumber):
 	#kill the atom
 	didraw.hide(visual_window_contents['atoms'][atomnumber])
 	#and kill off any associated bonds
-	for i in range(len(visual_window_contents['bonds'])):
-		#if either the bond's position is the same, or position + axis, ie the other end, is the same
-		#making a proper approx_equal for vectors would be good
-		if (difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[0],visual_window_contents['bonds'][i].pos[0]) and difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[1],visual_window_contents['bonds'][i].pos[1]) and difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[2],visual_window_contents['bonds'][i].pos[2])) or (difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[0],visual_window_contents['bonds'][i].pos[0]+visual_window_contents['bonds'][i].axis[0]) and difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[1],visual_window_contents['bonds'][i].pos[1]+visual_window_contents['bonds'][i].axis[1]) and difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[2],visual_window_contents['bonds'][i].pos[2]+visual_window_contents['bonds'][i].axis[2])):
-			didraw.hide(visual_window_contents['bonds'][i])
+	if visual_window_contents.has_key('bonds'): # if there are any bonds!
+		for i in range(len(visual_window_contents['bonds'])):
+			#if either the bond's position is the same, or position + axis, ie the other end, is the same
+			#making a proper approx_equal for vectors would be good
+			if (difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[0],visual_window_contents['bonds'][i].pos[0]) and difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[1],visual_window_contents['bonds'][i].pos[1]) and difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[2],visual_window_contents['bonds'][i].pos[2])) or (difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[0],visual_window_contents['bonds'][i].pos[0]+visual_window_contents['bonds'][i].axis[0]) and difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[1],visual_window_contents['bonds'][i].pos[1]+visual_window_contents['bonds'][i].axis[1]) and difn.approx_equal(visual_window_contents['atoms'][atomnumber].pos[2],visual_window_contents['bonds'][i].pos[2]+visual_window_contents['bonds'][i].axis[2])):
+				didraw.hide(visual_window_contents['bonds'][i])
 	return True
 
 def draw_kill_bond(bondnumber):
@@ -3308,63 +3315,65 @@ def draw_kill_bond(bondnumber):
 	didraw.hide(visual_window_contents['bonds'][bondnumber])
 	return True
 
-def numpyfree_thing(a,b):
-	for i in range(len(a)):
-		a[i]*=b[i]
-	return a
-
+# draw_kill_mass_do
+# --------------------------
+# Cycles through the contents of the visual window looking for adjacent objects to kill
+# based on a user click during draw_kill_mass.
+# This function only really makes sense when bonds are present, because only bonds join
+# atoms and allow the plague to propagate, as it were.
 def draw_kill_mass_do(start):
 	global visual_window_contents
-	if start[0]=='bond_mass':
-		#both ends
-		newkillpos = np.array([visual_window_contents['bonds'][start[1]].pos,visual_window_contents['bonds'][start[1]].pos+visual_window_contents['bonds'][start[1]].axis])
-		visual_window_contents['bonds'][start[1]].visible = False
-	elif start[0]=='atom_mass':
-		#just the centre
-		newkillpos = np.array([visual_window_contents['atoms'][start[1]].pos])
-		visual_window_contents['atoms'][start[1]].visible = False
-	
-	# This section is done in terms of all objects in the visual window.
-	# This means it doesn't update the visual_window_contents array stored by MmCalc.
-	# This is not currently a problem, but may become one if more complex drawing
-	# functionality is implemented.
-	visual_objects = visual_window.objects
-	visual_objects_type = np.array([i.__class__.__name__ for i in visual_window.objects],np.str) #class names are box, cylinder etc
-	visual_objects_position = np.array([i.pos for i in visual_window.objects])
-	visual_objects_axis = np.array([i.axis for i in visual_window.objects])
-	
-	#~ for i in range(len(visual_objects_position)):
-		#~ print visual_objects_type[i],visual_objects_position[i],visual_objects_axis[i],visual_objects[i].visible
-	
-	# Do objects of that type have an axis? (currently only cylinders and not-cylinders...)
-	# Axis for objects without one is typically (0,0,1): this is problematic because most lengths
-	# in the visual window are in nm or so! Hence we need to remove those objects
-	visual_objects_hasaxis = (visual_objects_type == 'cylinder')
-	#print visual_objects_hasaxis.shape,visual_objects_position.shape,visual_objects_axis.shape
-	visual_objects_otherend = visual_objects_position + numpyfree_thing(visual_objects_axis,visual_objects_hasaxis) #multiplying by visual_objects_hasaxis simply sets that term to zero for objects which don't have one...so otherend = position. This causes some double-counting.
-	
-	
-	while len(newkillpos) > 0:
-		print 'and again',newkillpos
-		for i in range(len(newkillpos)):
-			totaldeathlist = np.zeros(len(visual_objects),np.bool) #start all false--no-one has to die
-			#~ visual_objects_visible = [j.visible for j in visual_objects] #we only want to delete to objects which are still visible
-			#are any of the objects near the killpos being searched for and still visible?
-			deathlist = np.logical_or(np.abs((visual_objects_position-newkillpos[i]).sum(axis=1)) < 1e-13,np.abs((visual_objects_otherend-newkillpos[i]).sum(axis=1)) < 1e-13)
-			#~ deathlist = np.logical_and(np.logical_or(np.abs((visual_objects_position-newkillpos[i]).sum(axis=1)) < 1e-13,np.abs((visual_objects_otherend-newkillpos[i]).sum(axis=1)) < 1e-13),visual_objects_visible)
-			
-			
-			#hide those marked for deletion
-			for j in np.nonzero(deathlist)[0]: #nonzero returns an n-tuple for n-dimensional arrays; ours is only one long, so choose the first (and only) element
-				print j
-				visual_objects[j].visible = False
-			
-			#and add new casualties to the total death list this round
-			totaldeathlist = np.logical_or(totaldeathlist,deathlist)
+	# if there are no bonds, there is nothing joining the atoms together and a mass delete is equivalent to a regular delete
+	if visual_window_contents.has_key('bonds') and len(visual_window_contents['bonds']) > 0:
+		if start[0]=='bond_mass':
+			#both ends
+			newkillpos = np.array([visual_window_contents['bonds'][start[1]].pos,visual_window_contents['bonds'][start[1]].pos+visual_window_contents['bonds'][start[1]].axis])
+			visual_window_contents['bonds'][start[1]].visible = False
+		elif start[0]=='atom_mass':
+			#just the centre
+			newkillpos = np.array([visual_window_contents['atoms'][start[1]].pos])
+			visual_window_contents['atoms'][start[1]].visible = False
 		
-		#construct a new list of positions to kill
-		newkillpos = np.append(np.compress(totaldeathlist,visual_objects_position,axis=0),np.compress(totaldeathlist,visual_objects_otherend,axis=0))
-	print 'done'
+		# This section is done in terms of all objects in the visual window.
+		# This means it doesn't update the visual_window_contents array stored by MmCalc.
+		# This is not currently a problem, but may become one if more complex drawing
+		# functionality is implemented.
+		visual_objects = visual_window.objects
+		visual_objects_type = np.array([i.__class__.__name__ for i in visual_window.objects],np.str) #class names are box, cylinder etc
+		visual_objects_position = np.array([i.pos for i in visual_window.objects])
+		visual_objects_axis = np.array([i.axis for i in visual_window.objects])
+		
+		
+		# Do objects of that type have an axis? (currently only cylinders and not-cylinders...)
+		# Axis for objects without one is typically (0,0,1): this is problematic because most lengths
+		# in the visual window are in nm or so! Hence we need to remove those objects
+		visual_objects_hasaxis = (visual_objects_type == 'cylinder')
+		# np.multiply does elementwise multiplication of two arrays
+		# multiplying by visual_objects_hasaxis simply sets that term to zero for objects which don't have one...so otherend = position.
+		# This causes some double-counting, but numpy is fast and the code is much simpler this way.
+		visual_objects_otherend = visual_objects_position + (visual_objects_hasaxis*visual_objects_axis.transpose()).transpose()
+		
+		while len(newkillpos) > 0:
+			totaldeathlist = np.zeros(len(visual_objects),np.bool) #start all false--no-one has to die
+			for i in range(len(newkillpos)):
+				visual_objects_visible = [j.visible for j in visual_objects] #we only want to delete to objects which are still visible
+				#are any of the objects near the killpos being searched for and still visible?
+				#~ deathlist = np.logical_or(np.abs((visual_objects_position-newkillpos[i]).sum(axis=1)) < 1e-13,np.abs((visual_objects_otherend-newkillpos[i]).sum(axis=1)) < 1e-13)
+				deathlist = np.logical_and(np.logical_or(((visual_objects_position-newkillpos[i])**2).sum(axis=1) < 1e-22,((visual_objects_otherend-newkillpos[i])**2).sum(axis=1) < 1e-22),visual_objects_visible)
+				
+				
+				#hide those marked for deletion
+				for j in np.nonzero(deathlist)[0]: #nonzero returns an n-tuple for n-dimensional arrays; ours is only one long, so choose the first (and only) element
+					visual_objects[j].visible = False
+				
+				#and add new casualties to the total death list this round
+				totaldeathlist = np.logical_or(totaldeathlist,deathlist)
+			
+			#construct a new list of positions to kill
+			newkillpos = np.append(np.compress(totaldeathlist,visual_objects_position,axis=0),np.compress(totaldeathlist,visual_objects_otherend,axis=0),axis=0)
+	# if there are no bonds, do a single-delete of the atom clicked upon
+	else:
+		draw_kill_atom(start[1])
 	return True
 
 #at the moment, this menu just has simple camera direction settings
