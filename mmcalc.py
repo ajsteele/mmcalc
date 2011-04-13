@@ -189,25 +189,6 @@ def get_length_unit(stored_val):
 	else:
 		return 1.0, lang.m
 
-# labels2elements
-# --------------------------
-# Receives a list of atom labels (eg F1, Cu124 etc) and returns just the element string at the beginning, or the string itself if there is no element-like string present.
-# ---
-# INPUT
-# names = a list of atoms' names
-# ---
-# OUTPUT
-# names = cleaned-up list of atom element names
-def labels2elements(names):
-	element_pattern = re.compile('[A-Z][a-z]?') #matches a capital, optionally followed by a lower-case
-	#go through the names, stripping anything which doesn't match
-	for i in range(len(names)):
-		element_name = element_pattern.match(names[i]).group(0)
-		#only update if an element name is found...
-		if element_name is not None:
-			names[i] = element_name
-	return names
-
 def get_csc(directory,suffix,default_filename,file_description=''):
 	errtext=''
 	while True:
@@ -338,7 +319,7 @@ def import_cif():
 		cifblock = cif_file[cifblock[0]]
 
 	# loop through a,b,c,alpah etc and get their values
-	nononnumchars = re.compile('[0-9.]+') #need to remove brackets if there are any to make it floatable
+	nononnumchars = re.compile('[0-9.-]+') #need to remove brackets if there are any to make it floatable
 	crystal_data['length_unit'] = 'n'
 	crystal_data['a'] = float(nononnumchars.match(cifblock['_cell_length_a']).group(0))/10. #divide by ten to turn angstroms (the standard) into nm
 	crystal_data['b'] = float(nononnumchars.match(cifblock['_cell_length_b']).group(0))/10.
@@ -387,7 +368,7 @@ def import_cif():
 		space_group = ui.inputscreen('Type a space group name or number:',validate=sg_validate,notblank=True,text='The space group information in the CIF is not intelligible to me! Here is what the CIF says, can you please tell me what it means?'+lang.newline+lang.newline+sginfo)
 		#turn it into a space group name and number
 		space_group = sg.get_sg(space_group)
-		if len(a) > 1:
+		if len(space_group) > 1:
 			setting = choose_setting(space_group)
 		else:
 			setting = 1
@@ -400,12 +381,15 @@ def import_cif():
 	#ask user if they want elements or labels to be imported
 	#999
 	
-	
 	# loop through the atoms and collect their info
 	crystal_data['atoms'] = []
 	for i in range(len(cifblock['_atom_site_label'])):
-		crystal_data['atoms'].append([cifblock['_atom_site_label'][i],float(nononnumchars.match(cifblock['_atom_site_fract_x'][i]).group(0)),float(nononnumchars.match(cifblock['_atom_site_fract_y'][i]).group(0)),float(nononnumchars.match(cifblock['_atom_site_fract_z'][i]).group(0)),0])
-		#set charge to zero because CIF file doesn't tell you that...
+		crystal_data['atoms'].append(
+			[cifblock['_atom_site_label'][i],
+			float(nononnumchars.match(cifblock['_atom_site_fract_x'][i]).group(0)),
+			float(nononnumchars.match(cifblock['_atom_site_fract_y'][i]).group(0)),
+			float(nononnumchars.match(cifblock['_atom_site_fract_z'][i]).group(0)),
+			0]) #set charge to zero because CIF file doesn't tell you that...
 	
 	save_current('crystal',crystal_data)
 	
@@ -494,7 +478,10 @@ def choose_setting(spacegroups):
 		for spacegroup in spacegroups:
 			spacegroups_menu.append([str(i),spacegroup['setting'],False,''])
 			i+= 1
-		return np.int(ui.option(spacegroups_menu,True),'This space group ('+spacegroups[0]['name']+') has multiple settings. Please choose the appropriate one.')
+			#'This space group ('+spacegroups[0]['name']+') has multiple settings. Please choose the appropriate one.'
+		a = ui.option(spacegroups_menu,True)
+		print a
+		return np.int(a)
 
 def space_group():
 	a = ui.inputscreen('Type a space group name or number:',validate=sg_validate)
@@ -553,9 +540,9 @@ def add_atom():
 	newatom=[]
 	#998 make a way to get these all on one screen
 	newatom.append(ui.inputscreen('                     element:','string',notblank=True))
-	newatom.append(ui.inputscreen('  x (fractional coordinates):','float',0,1,notblank=True))
-	newatom.append(ui.inputscreen('  y (fractional coordinates):','float',0,1,notblank=True))
-	newatom.append(ui.inputscreen('  z (fractional coordinates):','float',0,1,notblank=True))
+	newatom.append(ui.inputscreen('  x (fractional coordinates):','float',notblank=True))
+	newatom.append(ui.inputscreen('  y (fractional coordinates):','float',notblank=True))
+	newatom.append(ui.inputscreen('  z (fractional coordinates):','float',notblank=True))
 	newatom.append(ui.inputscreen('                     q (|e|):','int',notblank=True))
 	#load the old atoms
 	crystal_data = load_current('crystal')
@@ -593,9 +580,9 @@ def edit_atom():
 	atom = []
 	#998 make a way to get these all on one screen
 	atom.append(ui.inputscreen('    element (blank for '+str(atoms[edit_me-1][0])+'):','string',newscreen=False))
-	atom.append(ui.inputscreen('          x (blank for '+str(atoms[edit_me-1][1])+'):','float',0,1,newscreen=False))
-	atom.append(ui.inputscreen('          y (blank for '+str(atoms[edit_me-1][2])+'):','float',0,1,newscreen=False))
-	atom.append(ui.inputscreen('          z (blank for '+str(atoms[edit_me-1][3])+'):','float',0,1,newscreen=False))
+	atom.append(ui.inputscreen('          x (blank for '+str(atoms[edit_me-1][1])+'):','float',newscreen=False))
+	atom.append(ui.inputscreen('          y (blank for '+str(atoms[edit_me-1][2])+'):','float',newscreen=False))
+	atom.append(ui.inputscreen('          z (blank for '+str(atoms[edit_me-1][3])+'):','float',newscreen=False))
 	atom.append(ui.inputscreen('       q (e) (blank for '+str(atoms[edit_me-1][4])+'):','int',newscreen=False))
 	for i in range(len(atom)):
 		if atom[i] is not False:
@@ -1009,7 +996,7 @@ def draw_crystal_unit_cell():
 		atoms_r[i] = atoms_r[i][0]*a[0]+atoms_r[i][1]*a[1]+atoms_r[i][2]*a[2]
 		#and split up the attributes into name, charge etc
 		atoms_names.append(atoms_attr[i][0])
-	atoms_names = labels2elements(atoms_names)
+	atoms_names = difn.labels2elements(atoms_names)
 	atoms_r = difn.zero_if_close(atoms_r)
 	visual_window_contents['atoms'] = didraw.draw_atoms(atoms_r,atoms_names,[],[],'e',scale,{}) #draw completely standard, coloured by element etc, to avoid hiding points
 	return draw_crystal
@@ -1025,7 +1012,7 @@ def draw_magnetic_unit_cell():
 	r_i,q_i,mu_i,names_i = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], L)
 	#then delete all atoms outside the magnetic unit cell
 	r_i,q_i,mu_i,names_i = difn.make_crystal_trim_para(r_i,q_i,mu_i,names_i,a_cart,L)
-	names_i = labels2elements(names_i)
+	names_i = difn.labels2elements(names_i)
 	scale = draw_data['scale']
 	if(visual_window is None):
 		visual_window = didraw.initialise('nostereo')
@@ -1058,7 +1045,6 @@ def draw_draw(silent='False'):
 	r_i,q_i,mu_i,names_i = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], L)
 	#then delete all atoms outside the magnetic unit cell
 	r_i,q_i,mu_i,names_i = difn.make_crystal_trim_para(r_i,q_i,mu_i,names_i,a_cart,L)
-	names_i = labels2elements(names_i)
 	scale = draw_data['scale']
 	#delete the old 3D window
 	if visual_window is not None:
@@ -1145,13 +1131,29 @@ def draw_draw(silent='False'):
 	if draw_data.has_key('kill') and len(draw_data['kill']) > 0:
 		if not silent:
 			ui.message('Killing unnecessary objects...')
-		for death in draw_data['kill']:
-			if death[0]=='atom':
-				draw_kill_atom(death[1])
-			elif death[0]=='bond':
-				draw_kill_bond(death[1])
-			elif death[0]=='atom_mass' or death[0]=='bond_mass':
-				draw_kill_mass_do(death)
+		try:
+			#this will sometimes go wrong if you change stuff, eg crystal structure,
+			# or drawing settings such as number of unit cells, principally because it
+			# will try to delete an object with an index higher than the new total number of objects
+			for death in draw_data['kill']:
+				if death[0]=='atom':
+					draw_kill_atom(death[1])
+				elif death[0]=='bond':
+					draw_kill_bond(death[1])
+				elif death[0]=='atom_mass' or death[0]=='bond_mass':
+					draw_kill_mass_do(death)
+		except IndexError:
+			#if the program is asked to delete an object which doesn't exist, offer the option of deleting
+			#all killed objects.
+			kill_kills = ui.inputscreen('The deletion script has tried to kill an atom or bond which is not present in the current draw window. This is probably caused by altering the number of unit cells being displayed or changing the crystal structure. Would you like to delete all kills? (y/n):','yn')
+			if kill_kills == 'yes':
+				update_value('draw','kill',[])
+			else: #if they refuse, turn off auto redraw to prevent a potentially infinite regress!
+				update_value('draw','auto_redraw',False)
+				final_message = 'You may now return to the visualisation menu. Auto-redraw has been disabled to give you the opportunity to revert whatever change caused this issue.'
+				return ui.menu([
+				['q','back to visualisation menu',draw,'']
+				],final_message)
 
 def draw_magnetic_unit_cell_from_crystal():
 	draw_magnetic_unit_cell()
@@ -2527,6 +2529,8 @@ def draw():
 	draw_data = load_current("draw")
 	if draw_data['auto_redraw']:
 		draw_draw()
+		# in case any updates were made whilst drawing
+		draw_data = load_current("draw")
 	#stuff to append to menu items if it's set
 	menu_data = {}
 	if draw_data['scale_default']:
@@ -2613,8 +2617,9 @@ def draw():
 		menuoptions.append(['3','3D stereo',draw_3d,menu_data['stereo_3d']])
 	menuoptions.append(['v','save settings',draw_save,''])
 	menuoptions.append(['l','load settings',draw_load,''])
-	if visual_window is not None: #only provide these options if there's an existing window
+	if visual_window is not None or (draw_data.has_key('kill') and len(draw_data['kill']) > 0): #only provide kill options if there's an existing window to kill into, or existing deaths
 		menuoptions.append(['k','kill objects',draw_kill,menu_data['kill']])
+	if visual_window is not None: #only provide these options if there's an existing window
 		menuoptions.append(['e','export image to POV-ray',draw_povexport,''])
 	menuoptions.append(['q','back to main menu',main_menu,''])
 	return ui.menu(menuoptions)
@@ -2950,15 +2955,17 @@ def generate_bonds():
 	r_i,q_i,mu_i,names_i = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], L)
 	#then delete all atoms outside the draw size
 	r_i,q_i,mu_i,names_i = difn.make_crystal_trim_para(r_i,q_i,mu_i,names_i,a_cart,L)
-	elements_i = labels2elements(names_i)
+	elements_i = difn.labels2elements(names_i)
 	bonds_output = []
 	for bond in draw_data['bonds']:
+		bond_from_element = difn.labels2elements([bond[0]])[0] #hackishly, this is passed as a one-item list because labels2elements accepts lists 998 fix this!
+		bond_to_element = difn.labels2elements([bond[1]])[0]
 		#if 'from' has no suffix eg it's Cu not Cu2, and is therefore just a general element
-		if bond[0] == labels2elements([bond[0]]): #hackishly, this is passed as a one-item list because labels2elements accepts lists 998 fix this!
+		if bond[0] == bond_from_element: 
 			from_general = True
 		else:
 			from_general = False
-		if bond[1] == labels2elements([bond[1]]):
+		if bond[1] == bond_to_element:
 			to_general = True
 		else:
 			to_general = False
@@ -2967,13 +2974,13 @@ def generate_bonds():
 		bonds_to = []
 		for i in range(len(r_i)):
 			if from_general: #if the bond name has no numerical suffix eg Cu not Cu2
-				if elements_i[i] == bond[0]: #then check it against the elements with numerical suffices subtracted, ie Cu2 > Cu
+				if elements_i[i] == bond_from_element: #then check it against the elements with numerical suffices subtracted, ie Cu2 > Cu
 					bonds_from.append(r_i[i]) #append the coordinates
 			else: #otherwise
 				if names_i[i] == bond[0]: #test it against the full atom label eg Cu2
 					bonds_from.append(r_i[i])
 			if to_general:
-				if elements_i[i] == bond[1]:
+				if elements_i[i] == bond_to_element:
 					bonds_to.append(r_i[i])
 			else: #otherwise
 				if names_i[i] == bond[1]:

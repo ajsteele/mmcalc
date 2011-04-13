@@ -198,31 +198,43 @@ def bonds(bonds,scale):
 def draw_atoms(r,name,q,mu,colourtype,scale,custom):
 	default_atom_size = 0.05
 	atoms = []
+	element = difn.labels2elements(name)
 	for i in range(len(r)):
-		if not custom.has_key(name[i]) or custom[name[i]]['visible']:
+		this_custom = False
+		if custom.has_key(name[i]):
+			this_custom = name[i]
+		elif custom.has_key(element[i]):
+			this_custom = element[i]
+		# we want to draw it if
+		# a) there is no atom customisation defined
+		# b) it is defined, and stipulates that it should be visible
+		# ie only those atoms which are customised to be invisible should be ignored
+		if (this_custom is False) or (this_custom is not False and custom[this_custom]['visible']):
 			size = False
 			colour = False
 			opacity = 1.0
-			if custom.has_key(name[i]):
-				if custom[name[i]]['colour'] is not False:
-					colour = (float(custom[name[i]]['colour'][0])/255.,float(custom[name[i]]['colour'][1])/255.,float(custom[name[i]]['colour'][2])/255.)
-				if custom[name[i]]['size_unit'] == 'r':
-					size = custom[name[i]]['size']*scale*default_atom_size
-				elif custom[name[i]]['size_unit'] == 'n':
-					size = custom[name[i]]['size']*difn.nano
-				elif custom[name[i]]['size_unit'] == 'm':
-					size = custom[name[i]]['size']
-				elif custom[name[i]]['size_unit'] == 'a':
-					size = custom[name[i]]['size']*difn.angstrom
-				if custom[name[i]]['opacity'] is not False:
-					opacity = custom[name[i]]['opacity']
+			# if it does have custom settings, implement them
+			if this_custom is not False:
+				if custom[this_custom]['colour'] is not False:
+					colour = (float(custom[this_custom]['colour'][0])/255.,float(custom[this_custom]['colour'][1])/255.,float(custom[this_custom]['colour'][2])/255.)
+				if custom[this_custom]['size_unit'] == 'r':
+					size = custom[this_custom]['size']*scale*default_atom_size
+				elif custom[this_custom]['size_unit'] == 'n':
+					size = custom[this_custom]['size']*difn.nano
+				elif custom[this_custom]['size_unit'] == 'm':
+					size = custom[this_custom]['size']
+				elif custom[this_custom]['size_unit'] == 'a':
+					size = custom[this_custom]['size']*difn.angstrom
+				if custom[this_custom]['opacity'] is not False:
+					opacity = custom[this_custom]['opacity']
+			# if colour has not yet been specified by custom settings...
 			if colour is False:
-				if colourtype == 'e':
-					if element_colours.has_key(name[i]):
-						colour = element_colours[name[i]]
+				if colourtype == 'e': #coloured by element
+					if element_colours.has_key(element[i]):
+						colour = element_colours[element[i]]
 					else:
 						colour = (0,0,0) #if it's not a recognised element, make it black 998 or a better colour?
-				if colourtype == 'c':
+				if colourtype == 'c': #coloured by charge
 					if q[i] == 0:
 						colour = (0,0,0)
 					else:

@@ -1,6 +1,7 @@
 from numpy import *
 from numpy.linalg import *
 from math import pi
+import re
 import random
 
 # === CONSTANTS === #
@@ -625,3 +626,23 @@ def calculate_V(r_test, r_crystal, q):
 			V += A*q[i]/sqrt(dot(r[i],r[i]))
 			# 1/4pi e0 * q/r (q_mu = +1)
 	return V
+
+# labels2elements
+# --------------------------
+# Receives a list of atom labels (eg F1, Cu124 etc) and returns just the element string at the beginning, or the string itself if there is no element-like string present.
+# ---
+# INPUT
+# names = a list of atoms' names
+# ---
+# OUTPUT
+# names = cleaned-up list of atom element names
+def labels2elements(names):
+	element_pattern = re.compile('[A-Z][a-z]?') #matches a capital, optionally followed by a lower-case
+	elements = [''] * len(names)
+	#go through the names, stripping anything which doesn't match
+	for i in range(len(names)):
+		element_name = element_pattern.match(names[i]).group(0)
+		#only update if an element name is found...
+		if element_name is not None:
+			elements[i] = element_name
+	return elements
