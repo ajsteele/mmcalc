@@ -1140,6 +1140,8 @@ def draw_draw(silent='False'):
 					draw_kill_atom(death[1])
 				elif death[0]=='bond':
 					draw_kill_bond(death[1])
+				elif death[0]=='moment':
+					draw_kill_moment(death[1])
 				elif death[0]=='atom_mass' or death[0]=='bond_mass':
 					draw_kill_mass_do(death)
 		except IndexError:
@@ -3218,6 +3220,16 @@ def draw_kill_kill():
 							draw_kill_bond(i)
 							kill_list.append(['bond',i])
 							break
+				# if it's not a bond either...
+				if atomnumber is None and bondnumber is None:
+					#...maybe it's a moment
+					momentnumber = None
+					for i in range(len(visual_window_contents['atoms_mu'])):
+						if event['event'].pick == visual_window_contents['atoms_mu'][i]:
+							momentnumber = i
+							draw_kill_moment(i)
+							kill_list.append(['moment',i])
+							break
 		if event['type'] == 'keypress': #is there a keyboard event waiting to be processed?
 			if event['event'] == 'ctrl+z':
 				#undo the last deletion by redrawing with n-1 instructions
@@ -3320,6 +3332,12 @@ def draw_kill_bond(bondnumber):
 	global visual_window_contents
 	#kill the bond
 	didraw.hide(visual_window_contents['bonds'][bondnumber])
+	return True
+
+def draw_kill_moment(momentnumber):
+	global visual_window_contents
+	#kill the bond
+	didraw.hide(visual_window_contents['atoms_mu'][momentnumber])
 	return True
 
 # draw_kill_mass_do
