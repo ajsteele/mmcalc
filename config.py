@@ -16,3 +16,7 @@ n_pos_at_a_time = 1000000
 # Directories
 current_dir = 'current' #for session files
 output_dir = 'output' #for output files
+
+# File suffices and extensions
+suffix_sep = '-' #this separates the main filename from the suffix and extension
+sufext_vcrystal = suffix_sep + 'vcrystal' + '.' + 'tsv'

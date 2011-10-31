@@ -167,7 +167,7 @@ def read(filename):
 						elif properties[i] == 'B_z':
 							line_values = vector_update(line_values,'B',2,line[i])
 						elif properties[i] == 'q':
-							line_values['q'] = numpy.int(line[i])
+							line_values['q'] = numpy.float(line[i])
 						elif properties[i] == 'omega':
 							line_values['omega'] = numpy.float(line[i])
 						#anything else just outputs a string; this includes element name

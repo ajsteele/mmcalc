@@ -1178,6 +1178,10 @@ def dipole():
 		menu_data['v_size'] = 'r='+str(dipole_data['r_sphere'])
 	else:
 		menu_data['v_size'] = lang.red+'not set'+lang.reset
+	if dipole_data.has_key('vcrystal_use_file'):
+		menu_data['vcrystal_use_file'] = 'no' #start with no as default, and amend to filename if there is one
+		if dipole_data['vcrystal_use_file'] == 'yes':
+			menu_data['vcrystal_use_file'] = dipole_data['vcrystal_use_filename']
 	if dipole_data.has_key('pointgen'):
 		if dipole_data['pointgen'] == 'g':
 			menu_data['points'] = 'grid; n_a='+str(dipole_data['n_a'])+', n_b='+str(dipole_data['n_b'])+', n_c='+str(dipole_data['n_c'])
@@ -1200,6 +1204,7 @@ def dipole():
 #	['s','vcrystal shape',dipole_vcrystal_shape,'only spherical possible at the moment'],#998 is there any point in this?
 	['c','convergence test',dipole_convergence_test,''],
 	['z','vcrystal size',dipole_vcrystal_size,menu_data['v_size']],
+	['u','use vcrystal file',dipole_vcrystal_use_file,menu_data['vcrystal_use_file']],
 	['p','points',dipole_points,menu_data['points']],
 	['m','muon site constraints',dipole_constraints,menu_data['constraints']],
 	['e','evaluate dipole field by direct summation',calculate_dipole,''],
@@ -1351,6 +1356,17 @@ def dipole_vcrystal_size():
 	if a is not False:
 		update_value('dipole','r_sphere',a)
 	return dipole
+
+def dipole_vcrystal_use_file():
+	yn = ui.inputscreen('Do you wish to use a pre-calculated vcrystal file? (y/n):','yn')
+	update_value('dipole','vcrystal_use_file',yn)
+	if yn == 'yes':
+		directory = config.output_dir
+		suffix = config.sufext_vcrystal # use the standard suffix and extension for vcrystals
+		filename = ui.get_filename(directory,suffix,file_description='of your vcrystal')
+		update_value('dipole','vcrystal_use_filename',filename) # just store the filename, without suffix/ext
+	return dipole
+
 
 # dipole_points
 # --------------------------
@@ -1835,13 +1851,13 @@ def calculate_dipole():
 	dipole_data = load_current('dipole')
 	crystal_data = load_current('crystal')
 	# is it either set to generate points on a grid, and are the grid dimensions set, or is it set to Monte Carlo with a specified n?
-	if dipole_data.has_key('r_sphere') and crystal_data.has_key('length_unit') and ((dipole_data.has_key('pointgen') and dipole_data['pointgen'] == 'g' and dipole_data.has_key('n_a') and dipole_data.has_key('n_b') and dipole_data.has_key('n_c')) or (dipole_data.has_key('pointgen') and dipole_data['pointgen'] == 'm' and dipole_data.has_key('n_monte'))) or (dipole_data.has_key('pointgen') and dipole_data['pointgen'] == 's'):
+	if (dipole_data.has_key('r_sphere') or (dipole_data.has_key('vcrystal_use_file') and dipole_data['vcrystal_use_file'] == 'yes')) and crystal_data.has_key('length_unit') and ((dipole_data.has_key('pointgen') and dipole_data['pointgen'] == 'g' and dipole_data.has_key('n_a') and dipole_data.has_key('n_b') and dipole_data.has_key('n_c')) or (dipole_data.has_key('pointgen') and dipole_data['pointgen'] == 'm' and dipole_data.has_key('n_monte'))) or (dipole_data.has_key('pointgen') and dipole_data['pointgen'] == 's'):
 		#if so, calculate!
 		#start the v_meta metadata dictionary
 		v_meta = {'title':ui.inputscreen('Please enter a title for your output files:','str',notblank=True)}
-		v_filename = ui.inputscreen('Please enter a filename for your output files:','str',notblank=True)
-		update_value('dipole', 'current_filename', v_filename)
-		#get crystal structure
+		output_filename = ui.inputscreen('Please enter a filename for your output files:','str',notblank=True)
+		update_value('dipole', 'current_filename', output_filename)
+		#get crystal structure (this needs to be done either for vcrystal making or constraint setting, and most people will be doing one or the other)
 		print 'Loading crystal structure...'
 		a,alpha,a_cart,r_atoms,q_atoms,m_atoms,k_atoms,name_atoms = stored_unit_cell()
 		L = difn.mag_unit_cell_size(k_atoms)
@@ -1849,6 +1865,8 @@ def calculate_dipole():
 		r_unit,q_unit,mu_unit,names_unit = difn.make_para_crystal(a_cart, r_atoms, m_atoms, k_atoms, q_atoms, name_atoms,[0,0,0], L)
 		#then delete all atoms outside the relevant unit cell(s)
 		r_unit,q_unit,mu_unit,names_unit = difn.make_crystal_trim_para(r_unit,q_unit,mu_unit,names_unit,a_cart,L)
+		
+		#now do the muon site constraints stuff
 		constraints = False
 		#if there are constraints set...
 		if dipole_data.has_key('constraints') and len(dipole_data['constraints']) > 0:
@@ -1859,27 +1877,43 @@ def calculate_dipole():
 			#now identify atoms and associated constraints
 			constraint_r,constraint_min,constraint_max = get_constraints(r_unit,names_unit,constraints,length_unit)
 			v_meta['constraints'] = constraints_readable(constraints,length_unit_name)
-		# ===make the vcrystal=== #
-		radius = dipole_data['r_sphere']
-		ui.message('Creating virtual crystal (r = '+str(radius)+'a)...')
-		v_meta['R'] = str(radius)+'a'
-		v_meta['shape'] = 'sphere'
-		L,r,q,mu,name,r_whatisthis = difn.make_crystal(radius,a,alpha,r_atoms,m_atoms,k_atoms, q_atoms, name_atoms, type='magnetic') #999whatisthis
-		#save the vcrystal
-		ui.message('Saving virtual crystal ('+config.output_dir+'/'+v_filename+'-vcrystal.tsv)...')
-		attr = []
-		for i in range(len(r)):
-			attr.append([r[i][0],r[i][1],r[i][2],name[i],mu[i][0],mu[i][1],mu[i][2],q[i]])
-		csc_properties = ['r_x','r_y','r_z','element','mu_x','mu_y','mu_z','q']
-		csc.write(v_meta,csc_properties,attr,config.output_dir+'/'+v_filename+'-vcrystal.tsv')
-		#kill the attributes variable as it may be quite big, and is no longer needed
-		del(attr)
+
+		# if it has been set in the menu that a pre-generated vcrystal file should be used
+		if dipole_data.has_key('vcrystal_use_file') and dipole_data['vcrystal_use_file'] == 'yes':
+			v_filename = dipole_data['vcrystal_use_filename']
+			# read in the vcrystal
+			ui.message('Loading virtual crystal ('+config.output_dir+'/'+dipole_data['vcrystal_use_filename']+config.sufext_vcrystal+')...')
+			title,values,error = csc.read(config.output_dir+'/'+dipole_data['vcrystal_use_filename']+config.sufext_vcrystal) #998 add error handling
+			# and refactor the 'values' dictionary into what the code later will use
+			r  = np.empty((len(values),3),np.float)
+			mu = np.empty((len(values),3),np.float)
+			for i in range(len(values)):
+				r[i]  = values[i]['r']
+				mu[i] = values[i]['m']
+			del(values)
+		else:
+			v_filename = output_filename
+			# ===make the vcrystal=== #
+			radius = dipole_data['r_sphere']
+			ui.message('Creating virtual crystal (r = '+str(radius)+'a)...')
+			v_meta['R'] = str(radius)+'a'
+			v_meta['shape'] = 'sphere'
+			L,r,q,mu,name,r_whatisthis = difn.make_crystal(radius,a,alpha,r_atoms,m_atoms,k_atoms, q_atoms, name_atoms, type='magnetic') #999whatisthis
+			#save the vcrystal
+			ui.message('Saving virtual crystal ('+config.output_dir+'/'+output_filename+config.sufext_vcrystal+')...')
+			attr = []
+			for i in range(len(r)):
+				attr.append([r[i][0],r[i][1],r[i][2],name[i],mu[i][0],mu[i][1],mu[i][2],q[i]])
+			csc_properties = ['r_x','r_y','r_z','element','mu_x','mu_y','mu_z','q']
+			csc.write(v_meta,csc_properties,attr,config.output_dir+'/'+output_filename+config.sufext_vcrystal)
+			#kill the attributes variable as it may be quite big, and is no longer needed
+			del(attr)
 		
 		ui.message('Calculating dipole fields...')
 		#get the magnetic unit cell size
 		L = difn.mag_unit_cell_size(k_atoms)
 		#create a file ready to receive the output
-		dipole_field_filename =  config.output_dir+'/'+v_filename+'-dipole-field.tsv'
+		dipole_field_filename =  config.output_dir+'/'+output_filename+'-dipole-field.tsv'
 		r_fast = difast.reshape_array(r)
 		mu_fast = difast.reshape_array(mu)
 
@@ -2012,7 +2046,7 @@ def calculate_dipole():
 			#verbose output also displays the proportion of time spent generating the random positions versus calculating dipole fields
 			final_message += ' ('+ui.s_to_hms(t_gen)+' ['+str(round(t_gen/t_elapsed*100,1))+'%] spent generating positions, '+ui.s_to_hms(t_dip)+' ['+str(round(t_dip/t_elapsed*100,1))+'%] spent calculating dipole fields)'
 	else:
-		final_message = 'Before calculating dipole fields, you need to set a vcrystal radius, whether to generate points on a grid or Monte Carlo and a number of points to sample, and a length unit in the crystal menu to apply any muon site constraints. Please ensure all of those are properly set and try again.'
+		final_message = 'Before calculating dipole fields, you need:'+lang.newline+'* to set a vcrystal radius or choose a vcrystal file to use'+lang.newline+'* whether to generate points on a grid or Monte Carlo and a number of points to sample'+lang.newline+'* a length unit in the crystal menu to apply any muon site constraints'+lang.newline+	'Please ensure all of those are properly set and try again.'
 	return ui.menu([
 	['q','back to dipole menu',dipole,'']
 	],final_message)
