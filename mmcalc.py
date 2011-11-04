@@ -715,8 +715,8 @@ def add_k():
 	newk=[]
 	#998 is it always true that |k|/pi <= 0.5 because it should be in the first BZ?
 	newk.append(ui.inputscreen(lang.add_kx,'complex',notblank=True,newscreen=False))
-	newk.append(ui.inputscreen(lang.add_kx,'complex',notblank=True,newscreen=False))
-	newk.append(ui.inputscreen(lang.add_kx,'complex',notblank=True,newscreen=False))
+	newk.append(ui.inputscreen(lang.add_ky,'complex',notblank=True,newscreen=False))
+	newk.append(ui.inputscreen(lang.add_kz,'complex',notblank=True,newscreen=False))
 	#load the old atoms
 	crystal_data = load_current('crystal')
 	if crystal_data.has_key('k'):
