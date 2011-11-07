@@ -1178,10 +1178,10 @@ def dipole():
 		menu_data['v_size'] = 'r='+str(dipole_data['r_sphere'])
 	else:
 		menu_data['v_size'] = lang.red+'not set'+lang.reset
-	if dipole_data.has_key('vcrystal_use_file'):
-		menu_data['vcrystal_use_file'] = 'no' #start with no as default, and amend to filename if there is one
-		if dipole_data['vcrystal_use_file'] == 'yes':
-			menu_data['vcrystal_use_file'] = dipole_data['vcrystal_use_filename']
+	menu_data['vcrystal_use_file'] = 'no' #start with no as default, and amend to filename if there is one
+	#and if there is a file to use specified, change the use file menu data to its name
+	if dipole_data.has_key('vcrystal_use_file') and dipole_data['vcrystal_use_file'] == 'yes':
+		menu_data['vcrystal_use_file'] = dipole_data['vcrystal_use_filename']
 	if dipole_data.has_key('pointgen'):
 		if dipole_data['pointgen'] == 'g':
 			menu_data['points'] = 'grid; n_a='+str(dipole_data['n_a'])+', n_b='+str(dipole_data['n_b'])+', n_c='+str(dipole_data['n_c'])
